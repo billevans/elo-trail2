@@ -1,21 +1,38 @@
-export type Aoe4WorldPlayer = {
+export interface Aoe4WorldPlayer {
   profile_id: number;
 
   name: string;
 
-  country?: string;
-
   steam_id?: string;
 
-  avatar?: string;
+  country?: string;
 
-  games?: number;
+  avatars?: {
+    small?: string | null;
+    medium?: string | null;
+    full?: string | null;
+  };
 
-  win_rate?: number;
+  last_game_at?: string | null;
 
-  rating?: number;
-};
+  leaderboards?: Record<
+    string,
+    {
+      rating?: number;
 
-export type Aoe4WorldSearchResponse = {
-  results: Aoe4WorldPlayer[];
-};
+      rank?: number | null;
+
+      rank_level?: string | null;
+
+      streak?: number;
+
+      games_count?: number;
+
+      wins_count?: number;
+
+      losses_count?: number;
+
+      win_rate?: number;
+    }
+  >;
+}
