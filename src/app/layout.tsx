@@ -1,10 +1,12 @@
 import type { Metadata } from "next";
 
+import { QueryProvider } from "@/providers/query-provider";
+
 import "./globals.css";
 
 export const metadata: Metadata = {
   title: "ELO Trail",
-  description: "Age of Empires IV ELO tracking",
+  description: "Age of Empires IV ELO tracking and analytics platform",
 };
 
 export default function RootLayout({
@@ -14,7 +16,9 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>
+        <QueryProvider>{children}</QueryProvider>
+      </body>
     </html>
   );
 }
