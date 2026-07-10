@@ -10,7 +10,13 @@ import { calculateEloStatistics } from "./statistics";
 
 function flattenPlayers(game: Aoe4WorldGame): Aoe4WorldGamePlayer[] {
   if (Array.isArray(game.teams)) {
-    return game.teams.flat();
+    return game.teams
+      .flat()
+      .map((entry) => entry.player)
+      .filter(
+        (player): player is Aoe4WorldGamePlayer =>
+          player !== null && player !== undefined,
+      );
   }
 
   return Array.isArray(game.players) ? game.players : [];
@@ -30,6 +36,43 @@ function normaliseResult(result: string | null | undefined): MatchResult {
   return "unknown";
 }
 
+function getOpponent(
+  game: Aoe4WorldGame,
+  playerId: number,
+): Aoe4WorldGamePlayer | undefined {
+  if (Array.isArray(game.teams)) {
+    const playerTeamIndex = game.teams.findIndex((team) =>
+      team.some((entry) => entry.player?.profile_id === playerId),
+    );
+
+    if (playerTeamIndex >= 0) {
+      const opposingTeam = game.teams.find(
+        (_, index) => index !== playerTeamIndex,
+      );
+
+      const opposingPlayer = opposingTeam
+        ?.map((entry) => entry.player)
+        .find(
+          (player): player is Aoe4WorldGamePlayer =>
+            player !== null &&
+            player !== undefined &&
+            player.profile_id !== playerId,
+        );
+
+      if (opposingPlayer) {
+        return opposingPlayer;
+      }
+    }
+  }
+
+  return flattenPlayers(game).find(
+    (player) =>
+      player.profile_id !== null &&
+      player.profile_id !== undefined &&
+      player.profile_id !== playerId,
+  );
+}
+
 function toMatchSummary(
   game: Aoe4WorldGame,
   playerId: number,
@@ -46,20 +89,19 @@ function toMatchSummary(
     return null;
   }
 
-  const ratingChange = player.rating_diff ?? 0;
+  const ratingChange =
+    typeof player.rating_diff === "number" ? player.rating_diff : 0;
 
-  const opponent = players.find(
-    (entry) => entry.profile_id != null && entry.profile_id !== playerId,
-  );
+  const opponent = getOpponent(game, playerId);
 
   return {
     gameId: game.game_id ?? game.id ?? `${playerId}-${game.started_at}`,
 
     startedAt: game.started_at,
 
-    leaderboard: game.leaderboard ?? undefined,
+    leaderboard: game.leaderboard ?? game.kind ?? undefined,
 
-    map: game.map_name ?? game.map ?? undefined,
+    map: game.map ?? game.map_name ?? undefined,
 
     civilization: player.civilization ?? undefined,
 
