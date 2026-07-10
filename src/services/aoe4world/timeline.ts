@@ -23,7 +23,7 @@ function flattenPlayers(game: Aoe4WorldGame): Aoe4WorldGamePlayer[] {
 }
 
 function normaliseResult(result: string | null | undefined): MatchResult {
-  const value = result?.toLowerCase();
+  const value = result?.trim().toLowerCase();
 
   if (value === "win" || value === "won") {
     return "win";
@@ -46,11 +46,11 @@ function getOpponent(
     );
 
     if (playerTeamIndex >= 0) {
-      const opposingTeam = game.teams.find(
+      const opponentTeam = game.teams.find(
         (_, index) => index !== playerTeamIndex,
       );
 
-      const opposingPlayer = opposingTeam
+      const opponent = opponentTeam
         ?.map((entry) => entry.player)
         .find(
           (player): player is Aoe4WorldGamePlayer =>
@@ -59,8 +59,8 @@ function getOpponent(
             player.profile_id !== playerId,
         );
 
-      if (opposingPlayer) {
-        return opposingPlayer;
+      if (opponent) {
+        return opponent;
       }
     }
   }
@@ -81,23 +81,36 @@ function toMatchSummary(
     return null;
   }
 
+  const startedAt = new Date(game.started_at);
+
+  if (Number.isNaN(startedAt.getTime())) {
+    return null;
+  }
+
   const players = flattenPlayers(game);
 
   const player = players.find((entry) => entry.profile_id === playerId);
 
-  if (!player || typeof player.rating !== "number") {
+  if (
+    !player ||
+    typeof player.rating !== "number" ||
+    !Number.isFinite(player.rating)
+  ) {
     return null;
   }
 
   const ratingChange =
-    typeof player.rating_diff === "number" ? player.rating_diff : 0;
+    typeof player.rating_diff === "number" &&
+    Number.isFinite(player.rating_diff)
+      ? player.rating_diff
+      : 0;
 
   const opponent = getOpponent(game, playerId);
 
   return {
     gameId: game.game_id ?? game.id ?? `${playerId}-${game.started_at}`,
 
-    startedAt: game.started_at,
+    startedAt: startedAt.toISOString(),
 
     leaderboard: game.leaderboard ?? game.kind ?? undefined,
 

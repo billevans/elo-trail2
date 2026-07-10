@@ -44,10 +44,6 @@ export interface Aoe4WorldGame {
 
   teams?: Aoe4WorldGameTeamEntry[][] | null;
 
-  /**
-   * Retained as a defensive fallback in case another endpoint
-   * returns participants without the nested team structure.
-   */
   players?: Aoe4WorldGamePlayer[] | null;
 }
 
@@ -60,9 +56,13 @@ export interface Aoe4WorldGamesResponse {
 
   filters?: {
     leaderboard?: string | null;
+
     since?: string | number | null;
+
     profile_ids?: number[] | null;
+
     opponent_profile_id?: number | null;
+
     opponent_profile_ids?: number[] | null;
   };
 
