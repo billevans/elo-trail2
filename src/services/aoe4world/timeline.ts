@@ -89,7 +89,6 @@ export function buildEloHistory(
   const matches = games
     .map((game) => toMatchSummary(game, playerId))
     .filter((match): match is MatchSummary => match !== null)
-    .filter((match) => !leaderboard || match.leaderboard === leaderboard)
     .sort(
       (left, right) =>
         new Date(left.startedAt).getTime() -

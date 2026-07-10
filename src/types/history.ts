@@ -1,4 +1,6 @@
 export type HistoryLeaderboard =
+  | "rm_solo"
+  | "rm_team"
   | "rm_1v1"
   | "rm_2v2"
   | "rm_3v3"
