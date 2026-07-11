@@ -3,7 +3,10 @@
 import { useMemo, useState } from "react";
 import {
   ArrowRightLeft,
+  Check,
+  Copy,
   LoaderCircle,
+  RefreshCw,
   TrendingDown,
   TrendingUp,
 } from "lucide-react";
@@ -63,11 +66,7 @@ function formatElo(value: number | null) {
 }
 
 function formatDifference(difference: number | null) {
-  if (difference === null) {
-    return "—";
-  }
-
-  return Math.abs(difference).toLocaleString();
+  return difference === null ? "—" : Math.abs(difference).toLocaleString();
 }
 
 function buildAnalytics(
@@ -84,6 +83,8 @@ export function PlayerComparisonPanel({
   onSwap,
 }: PlayerComparisonPanelProps) {
   const [range, setRange] = useState<HistoryRange>("180d");
+
+  const [copied, setCopied] = useState(false);
 
   const playerOneHistory = usePlayerHistory(playerOne.profile_id, {
     days: 180,
@@ -140,6 +141,24 @@ export function PlayerComparisonPanel({
 
   const error = playerOneHistory.error ?? playerTwoHistory.error;
 
+  async function copyComparisonLink() {
+    try {
+      await navigator.clipboard.writeText(window.location.href);
+
+      setCopied(true);
+
+      window.setTimeout(() => {
+        setCopied(false);
+      }, 2000);
+    } catch {
+      setCopied(false);
+    }
+  }
+
+  function retryComparison() {
+    void Promise.all([playerOneHistory.refetch(), playerTwoHistory.refetch()]);
+  }
+
   return (
     <section className="space-y-6 rounded-2xl border border-black/10 bg-black/[0.02] p-4 sm:p-6 dark:border-white/10 dark:bg-white/[0.03]">
       <header className="flex flex-col justify-between gap-4 lg:flex-row lg:items-center">
@@ -165,11 +184,29 @@ export function PlayerComparisonPanel({
           <button
             type="button"
             onClick={onSwap}
-            className="inline-flex items-center gap-2 rounded-lg border border-black/10 bg-white px-3 py-2 text-sm font-medium transition hover:bg-black/5 dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/10"
+            className="inline-flex items-center gap-2 rounded-lg border border-black/10 bg-white px-3 py-2 text-sm font-medium transition hover:bg-black/5 focus-visible:ring-2 focus-visible:ring-black/40 focus-visible:outline-none dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/10 dark:focus-visible:ring-white/40"
           >
             <ArrowRightLeft className="size-4" aria-hidden="true" />
             Swap
           </button>
+
+          <button
+            type="button"
+            onClick={() => void copyComparisonLink()}
+            className="inline-flex items-center gap-2 rounded-lg border border-black/10 bg-white px-3 py-2 text-sm font-medium transition hover:bg-black/5 focus-visible:ring-2 focus-visible:ring-black/40 focus-visible:outline-none dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/10 dark:focus-visible:ring-white/40"
+          >
+            {copied ? (
+              <Check className="size-4" aria-hidden="true" />
+            ) : (
+              <Copy className="size-4" aria-hidden="true" />
+            )}
+
+            {copied ? "Copied" : "Copy link"}
+          </button>
+
+          <span aria-live="polite" className="sr-only">
+            {copied ? "Comparison link copied" : ""}
+          </span>
         </div>
       </header>
 
@@ -262,14 +299,21 @@ export function PlayerComparisonPanel({
       </div>
 
       {isLoading ? (
-        <div className="flex min-h-96 items-center justify-center">
+        <div
+          role="status"
+          aria-live="polite"
+          className="flex min-h-96 items-center justify-center"
+        >
           <div className="flex items-center gap-3 text-black/55 dark:text-white/55">
             <LoaderCircle className="size-5 animate-spin" aria-hidden="true" />
             Loading both ELO histories…
           </div>
         </div>
       ) : error ? (
-        <div className="rounded-xl border border-red-500/25 bg-red-500/5 p-6 text-center">
+        <div
+          role="alert"
+          className="rounded-xl border border-red-500/25 bg-red-500/5 p-6 text-center"
+        >
           <h3 className="font-semibold text-red-700 dark:text-red-400">
             Comparison could not be loaded
           </h3>
@@ -277,6 +321,15 @@ export function PlayerComparisonPanel({
           <p className="mt-1 text-sm text-red-700/75 dark:text-red-400/75">
             {error.message}
           </p>
+
+          <button
+            type="button"
+            onClick={retryComparison}
+            className="mt-4 inline-flex items-center gap-2 rounded-lg bg-red-700 px-4 py-2 text-sm font-medium text-white transition hover:bg-red-800 focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:outline-none"
+          >
+            <RefreshCw className="size-4" aria-hidden="true" />
+            Try again
+          </button>
         </div>
       ) : (
         <>

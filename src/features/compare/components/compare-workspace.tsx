@@ -1,12 +1,13 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
-import type { Aoe4WorldPlayer } from "@/services/aoe4world";
 import { usePlayerProfile } from "@/features/player";
+import type { Aoe4WorldPlayer } from "@/services/aoe4world";
 
 import { ComparePlayerPicker } from "./compare-player-picker";
+import { ComparisonLoadingState } from "./comparison-loading-state";
 import { PlayerComparisonPanel } from "./player-comparison-panel";
 
 function parseProfileId(value: string | null) {
@@ -23,6 +24,8 @@ export function CompareWorkspace() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+
+  const comparisonRef = useRef<HTMLDivElement | null>(null);
 
   const playerOneId = parseProfileId(searchParams.get("p1"));
 
@@ -53,6 +56,27 @@ export function CompareWorkspace() {
         : (playerTwoQuery.data ?? null),
     [playerTwoId, playerTwoQuery.data, selectedPlayerTwo],
   );
+
+  const isRestoringSharedPlayers =
+    (playerOneId !== null && playerOneQuery.isLoading) ||
+    (playerTwoId !== null && playerTwoQuery.isLoading);
+
+  useEffect(() => {
+    if (!playerOne || !playerTwo) {
+      return;
+    }
+
+    const animationFrame = window.requestAnimationFrame(() => {
+      comparisonRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    });
+
+    return () => {
+      window.cancelAnimationFrame(animationFrame);
+    };
+  }, [playerOne, playerTwo]);
 
   function updateUrl(
     nextPlayerOneId: number | null,
@@ -105,7 +129,6 @@ export function CompareWorkspace() {
 
   function swapPlayers() {
     setSelectedPlayerOne(playerTwo);
-
     setSelectedPlayerTwo(playerOne);
 
     updateUrl(playerTwo?.profile_id ?? null, playerOne?.profile_id ?? null);
@@ -131,19 +154,31 @@ export function CompareWorkspace() {
         />
       </div>
 
+      {isRestoringSharedPlayers && (
+        <ComparisonLoadingState message="Restoring shared player profiles…" />
+      )}
+
       {(playerOneQuery.error || playerTwoQuery.error) && (
-        <div className="rounded-xl border border-red-500/25 bg-red-500/5 p-4 text-sm text-red-700 dark:text-red-400">
-          One of the shared player profiles could not be restored.
+        <div
+          role="alert"
+          className="rounded-xl border border-red-500/25 bg-red-500/5 p-4 text-sm text-red-700 dark:text-red-400"
+        >
+          One of the shared player profiles could not be restored. Remove that
+          player and search again.
         </div>
       )}
 
-      {playerOne && playerTwo ? (
-        <PlayerComparisonPanel
-          playerOne={playerOne}
-          playerTwo={playerTwo}
-          onSwap={swapPlayers}
-        />
-      ) : (
+      {!isRestoringSharedPlayers && playerOne && playerTwo && (
+        <div ref={comparisonRef} className="scroll-mt-6">
+          <PlayerComparisonPanel
+            playerOne={playerOne}
+            playerTwo={playerTwo}
+            onSwap={swapPlayers}
+          />
+        </div>
+      )}
+
+      {!isRestoringSharedPlayers && (!playerOne || !playerTwo) && (
         <div className="rounded-2xl border border-dashed border-black/15 p-10 text-center dark:border-white/15">
           <h2 className="text-xl font-semibold">Select two players</h2>
 
