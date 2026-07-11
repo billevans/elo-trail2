@@ -54,7 +54,22 @@ export interface EloHistory {
 }
 
 export interface PlayerGamesOptions {
-  limit?: number;
-  page?: number;
   leaderboard?: HistoryLeaderboard;
+
+  /**
+   * Only games at or after this date are requested.
+   * This should be an ISO-8601 date string.
+   */
+  since?: string;
+
+  /**
+   * AoE4World currently returns no more than 50 games
+   * per page for this endpoint.
+   */
+  pageSize?: number;
+
+  /**
+   * Safety ceiling to prevent unbounded upstream requests.
+   */
+  maxPages?: number;
 }

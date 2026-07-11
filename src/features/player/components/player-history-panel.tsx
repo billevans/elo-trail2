@@ -159,13 +159,12 @@ export function PlayerHistoryPanel({
   player,
   onClose,
 }: PlayerHistoryPanelProps) {
-  const [range, setRange] = useState<HistoryRange>("all");
+  const [range, setRange] = useState<HistoryRange>("180d");
 
   const { data, isLoading, isFetching, error, refetch } = usePlayerHistory(
     player.profile_id,
     {
-      leaderboard: "rm_1v1",
-      limit: 200,
+      days: 180,
     },
   );
 

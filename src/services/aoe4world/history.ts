@@ -3,8 +3,81 @@ import type { PlayerGamesOptions } from "@/types/history";
 import { aoe4Request } from "./client";
 import type { Aoe4WorldGame, Aoe4WorldGamesResponse } from "./history-types";
 
-const DEFAULT_LIMIT = 200;
-const MAX_LIMIT = 500;
+const DEFAULT_PAGE_SIZE = 50;
+const MAX_PAGE_SIZE = 50;
+const DEFAULT_MAX_PAGES = 100;
+const MAX_ALLOWED_PAGES = 200;
+
+function getGameKey(game: Aoe4WorldGame): string {
+  if (game.game_id !== undefined) {
+    return String(game.game_id);
+  }
+
+  if (game.id !== undefined) {
+    return String(game.id);
+  }
+
+  return [
+    game.started_at ?? "unknown-date",
+    game.kind ?? "unknown-kind",
+    game.map ?? game.map_name ?? "unknown-map",
+  ].join(":");
+}
+
+function deduplicateGames(games: Aoe4WorldGame[]): Aoe4WorldGame[] {
+  const uniqueGames = new Map<string, Aoe4WorldGame>();
+
+  for (const game of games) {
+    uniqueGames.set(getGameKey(game), game);
+  }
+
+  return [...uniqueGames.values()];
+}
+
+function buildGamesEndpoint(
+  playerId: number,
+  page: number,
+  options: Required<Pick<PlayerGamesOptions, "pageSize" | "maxPages">> &
+    Pick<PlayerGamesOptions, "leaderboard" | "since">,
+): string {
+  const params = new URLSearchParams({
+    page: String(page),
+    limit: String(options.pageSize),
+  });
+
+  if (options.leaderboard) {
+    params.set("leaderboard", options.leaderboard);
+  }
+
+  if (options.since) {
+    params.set("since", options.since);
+  }
+
+  return `/players/${playerId}/games?${params.toString()}`;
+}
+
+async function getGamesPage(
+  playerId: number,
+  page: number,
+  options: Required<Pick<PlayerGamesOptions, "pageSize" | "maxPages">> &
+    Pick<PlayerGamesOptions, "leaderboard" | "since">,
+): Promise<Aoe4WorldGamesResponse> {
+  const response = await aoe4Request<Aoe4WorldGamesResponse | Aoe4WorldGame[]>(
+    buildGamesEndpoint(playerId, page, options),
+  );
+
+  if (Array.isArray(response)) {
+    return {
+      page,
+      per_page: options.pageSize,
+      count: response.length,
+      total_count: response.length,
+      games: response,
+    };
+  }
+
+  return response;
+}
 
 export async function getPlayerGames(
   playerId: number,
@@ -14,25 +87,72 @@ export async function getPlayerGames(
     throw new Error("A valid positive player profile ID is required");
   }
 
-  const limit = Math.min(
-    Math.max(Math.trunc(options.limit ?? DEFAULT_LIMIT), 1),
-    MAX_LIMIT,
+  const pageSize = Math.min(
+    Math.max(Math.trunc(options.pageSize ?? DEFAULT_PAGE_SIZE), 1),
+    MAX_PAGE_SIZE,
   );
 
-  const page = Math.max(Math.trunc(options.page ?? 1), 1);
+  const maxPages = Math.min(
+    Math.max(Math.trunc(options.maxPages ?? DEFAULT_MAX_PAGES), 1),
+    MAX_ALLOWED_PAGES,
+  );
 
-  const params = new URLSearchParams({
-    limit: String(limit),
-    page: String(page),
-  });
+  const requestOptions = {
+    leaderboard: options.leaderboard,
+    since: options.since,
+    pageSize,
+    maxPages,
+  };
 
-  if (options.leaderboard) {
-    params.set("leaderboard", options.leaderboard);
+  const firstPage = await getGamesPage(playerId, 1, requestOptions);
+
+  const firstPageGames = firstPage.games ?? [];
+
+  const totalCount =
+    typeof firstPage.total_count === "number"
+      ? firstPage.total_count
+      : firstPageGames.length;
+
+  if (totalCount <= firstPageGames.length || firstPageGames.length === 0) {
+    return deduplicateGames(firstPageGames);
   }
 
-  const response = await aoe4Request<Aoe4WorldGamesResponse | Aoe4WorldGame[]>(
-    `/players/${playerId}/games?${params.toString()}`,
-  );
+  const requiredPages = Math.min(Math.ceil(totalCount / pageSize), maxPages);
 
-  return Array.isArray(response) ? response : (response.games ?? []);
+  const allGames = [...firstPageGames];
+
+  /*
+   * Fetch pages in small batches rather than firing every
+   * request simultaneously. This is friendlier to the
+   * upstream API and avoids excessive concurrent sockets.
+   */
+  const concurrency = 5;
+
+  for (
+    let firstPageInBatch = 2;
+    firstPageInBatch <= requiredPages;
+    firstPageInBatch += concurrency
+  ) {
+    const lastPageInBatch = Math.min(
+      firstPageInBatch + concurrency - 1,
+      requiredPages,
+    );
+
+    const pageNumbers = Array.from(
+      {
+        length: lastPageInBatch - firstPageInBatch + 1,
+      },
+      (_, index) => firstPageInBatch + index,
+    );
+
+    const responses = await Promise.all(
+      pageNumbers.map((page) => getGamesPage(playerId, page, requestOptions)),
+    );
+
+    for (const response of responses) {
+      allGames.push(...(response.games ?? []));
+    }
+  }
+
+  return deduplicateGames(allGames);
 }

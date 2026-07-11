@@ -1,4 +1,4 @@
-export type HistoryRange = "all" | "30d" | "90d" | "180d";
+export type HistoryRange = "30d" | "90d" | "180d";
 
 interface HistoryRangeSelectorProps {
   value: HistoryRange;
@@ -20,10 +20,6 @@ const OPTIONS: Array<{
   {
     value: "180d",
     label: "180 days",
-  },
-  {
-    value: "all",
-    label: "All",
   },
 ];
 

@@ -5,21 +5,9 @@ import { buildEloHistory } from "@/services/aoe4world/timeline";
 import type { ApiFailure, ApiSuccess } from "@/types/api";
 import type { EloHistory, HistoryLeaderboard } from "@/types/history";
 
-const HISTORY_LEADERBOARDS = new Set<HistoryLeaderboard>([
-  "rm_solo",
-  "rm_team",
-  "rm_1v1",
-  "rm_2v2",
-  "rm_3v3",
-  "rm_4v4",
-  "qm_1v1",
-  "qm_2v2",
-  "qm_3v3",
-  "qm_4v4",
-]);
-
-const DEFAULT_LIMIT = 200;
-const MAX_LIMIT = 500;
+const DEFAULT_HISTORY_DAYS = 180;
+const MAX_HISTORY_DAYS = 180;
+const MAX_HISTORY_PAGES = 100;
 
 interface RouteContext {
   params: Promise<{
@@ -44,10 +32,6 @@ function parsePositiveInteger(
   return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
 }
 
-function isHistoryLeaderboard(value: string): value is HistoryLeaderboard {
-  return HISTORY_LEADERBOARDS.has(value as HistoryLeaderboard);
-}
-
 function failure(
   status: number,
   code: string,
@@ -69,6 +53,14 @@ function failure(
   );
 }
 
+function getSinceDate(days: number): string {
+  const date = new Date();
+
+  date.setUTCDate(date.getUTCDate() - days);
+
+  return date.toISOString();
+}
+
 export async function GET(request: Request, context: RouteContext) {
   const { id } = await context.params;
 
@@ -84,58 +76,33 @@ export async function GET(request: Request, context: RouteContext) {
 
   const { searchParams } = new URL(request.url);
 
-  const limit = parsePositiveInteger(searchParams.get("limit"), DEFAULT_LIMIT);
+  const days = parsePositiveInteger(
+    searchParams.get("days"),
+    DEFAULT_HISTORY_DAYS,
+  );
 
-  const page = parsePositiveInteger(searchParams.get("page"), 1);
-
-  const leaderboardParameter = searchParams.get("leaderboard");
-
-  if (limit === null || limit > MAX_LIMIT) {
+  if (days === null || days > MAX_HISTORY_DAYS) {
     return failure(
       400,
-      "INVALID_LIMIT",
-      `Limit must be between 1 and ${MAX_LIMIT}.`,
-    );
-  }
-
-  if (page === null) {
-    return failure(400, "INVALID_PAGE", "Page must be a positive integer.");
-  }
-
-  if (
-    leaderboardParameter !== null &&
-    !isHistoryLeaderboard(leaderboardParameter)
-  ) {
-    return failure(
-      400,
-      "INVALID_LEADERBOARD",
-      "The requested leaderboard is not supported.",
+      "INVALID_HISTORY_RANGE",
+      `History range must be between 1 and ${MAX_HISTORY_DAYS} days.`,
     );
   }
 
   /*
-   * ELO Trail only tracks underlying ranked 1v1
-   * matchmaking ELO. Ranked points are not supported.
+   * ELO Trail exclusively tracks ranked 1v1
+   * matchmaking ELO—not seasonal ranked points.
    */
-  if (
-    leaderboardParameter !== undefined &&
-    leaderboardParameter !== null &&
-    leaderboardParameter !== "rm_1v1"
-  ) {
-    return failure(
-      400,
-      "UNSUPPORTED_RATING_SYSTEM",
-      "ELO Trail only supports ranked 1v1 matchmaking ELO.",
-    );
-  }
-
   const leaderboard: HistoryLeaderboard = "rm_1v1";
+
+  const since = getSinceDate(days);
 
   try {
     const games = await getPlayerGames(playerId, {
-      limit,
-      page,
       leaderboard,
+      since,
+      pageSize: 50,
+      maxPages: MAX_HISTORY_PAGES,
     });
 
     const history = buildEloHistory(playerId, games, leaderboard);
@@ -146,21 +113,21 @@ export async function GET(request: Request, context: RouteContext) {
       },
       {
         headers: {
-          /*
-           * Do not allow an earlier ranked-points payload
-           * to survive while the ELO mapper is being built.
-           */
-          "Cache-Control": "no-store, no-cache, must-revalidate",
-          Pragma: "no-cache",
-          Expires: "0",
-          "X-Elo-Trail-Data-Version": "matchmaking-elo-v2",
+          "Cache-Control": "public, s-maxage=300, stale-while-revalidate=600",
+
+          "X-Elo-Trail-Data-Version": "matchmaking-elo-paginated-v1",
+
+          "X-Elo-Trail-History-Days": String(days),
+
+          "X-Elo-Trail-Games-Fetched": String(games.length),
         },
       },
     );
   } catch (error) {
-    console.error("Failed to load matchmaking ELO history", {
+    console.error("Failed to load paginated matchmaking ELO history", {
       playerId,
       leaderboard,
+      since,
       error,
     });
 
