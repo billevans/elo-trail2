@@ -8,14 +8,20 @@ import {
   TrendingUp,
 } from "lucide-react";
 
-import type { Aoe4WorldPlayer } from "@/services/aoe4world";
 import {
   HistoryRangeSelector,
   type HistoryRange,
   usePlayerHistory,
 } from "@/features/player";
-import type { EloPoint } from "@/types/history";
+import type { Aoe4WorldPlayer } from "@/services/aoe4world";
+import type { EloPoint, MatchSummary } from "@/types/history";
 
+import {
+  calculateComparisonAnalytics,
+  type ComparisonAnalytics,
+} from "../lib/comparison-analytics";
+
+import { ComparisonMetricsTable } from "./comparison-metrics-table";
 import { EloComparisonChart } from "./elo-comparison-chart";
 
 interface PlayerComparisonPanelProps {
@@ -40,6 +46,12 @@ function filterPoints(points: EloPoint[], range: HistoryRange) {
   return points.filter((point) => new Date(point.timestamp) >= start);
 }
 
+function filterMatches(matches: MatchSummary[], range: HistoryRange) {
+  const start = getRangeStart(range);
+
+  return matches.filter((match) => new Date(match.startedAt) >= start);
+}
+
 function getCurrentElo(player: Aoe4WorldPlayer) {
   const rating = player.leaderboards?.rm_1v1_elo?.rating;
 
@@ -48,6 +60,22 @@ function getCurrentElo(player: Aoe4WorldPlayer) {
 
 function formatElo(value: number | null) {
   return value === null ? "—" : value.toLocaleString();
+}
+
+function formatDifference(difference: number | null) {
+  if (difference === null) {
+    return "—";
+  }
+
+  return Math.abs(difference).toLocaleString();
+}
+
+function buildAnalytics(
+  points: EloPoint[],
+  matches: MatchSummary[],
+  currentElo: number | null,
+): ComparisonAnalytics {
+  return calculateComparisonAnalytics(points, matches, currentElo);
 }
 
 export function PlayerComparisonPanel({
@@ -65,6 +93,10 @@ export function PlayerComparisonPanel({
     days: 180,
   });
 
+  const playerOneCurrentElo = getCurrentElo(playerOne);
+
+  const playerTwoCurrentElo = getCurrentElo(playerTwo);
+
   const playerOnePoints = useMemo(
     () => filterPoints(playerOneHistory.data?.points ?? [], range),
     [playerOneHistory.data?.points, range],
@@ -75,16 +107,36 @@ export function PlayerComparisonPanel({
     [playerTwoHistory.data?.points, range],
   );
 
-  const playerOneElo = getCurrentElo(playerOne);
+  const playerOneMatches = useMemo(
+    () => filterMatches(playerOneHistory.data?.matches ?? [], range),
+    [playerOneHistory.data?.matches, range],
+  );
 
-  const playerTwoElo = getCurrentElo(playerTwo);
+  const playerTwoMatches = useMemo(
+    () => filterMatches(playerTwoHistory.data?.matches ?? [], range),
+    [playerTwoHistory.data?.matches, range],
+  );
+
+  const playerOneAnalytics = useMemo(
+    () =>
+      buildAnalytics(playerOnePoints, playerOneMatches, playerOneCurrentElo),
+    [playerOneCurrentElo, playerOneMatches, playerOnePoints],
+  );
+
+  const playerTwoAnalytics = useMemo(
+    () =>
+      buildAnalytics(playerTwoPoints, playerTwoMatches, playerTwoCurrentElo),
+    [playerTwoCurrentElo, playerTwoMatches, playerTwoPoints],
+  );
 
   const difference =
-    playerOneElo !== null && playerTwoElo !== null
-      ? playerOneElo - playerTwoElo
+    playerOneCurrentElo !== null && playerTwoCurrentElo !== null
+      ? playerOneCurrentElo - playerTwoCurrentElo
       : null;
 
   const isLoading = playerOneHistory.isLoading || playerTwoHistory.isLoading;
+
+  const isFetching = playerOneHistory.isFetching || playerTwoHistory.isFetching;
 
   const error = playerOneHistory.error ?? playerTwoHistory.error;
 
@@ -99,6 +151,12 @@ export function PlayerComparisonPanel({
           <h2 className="mt-2 text-3xl font-bold tracking-tight">
             {playerOne.name} vs {playerTwo.name}
           </h2>
+
+          <p className="mt-1 text-sm text-black/50 dark:text-white/50">
+            Analytics cover the selected {Number.parseInt(range, 10)}
+            -day period
+            {isFetching ? " · refreshing" : ""}
+          </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
@@ -117,22 +175,36 @@ export function PlayerComparisonPanel({
 
       <div className="grid gap-3 md:grid-cols-3">
         <div className="rounded-xl border border-black/10 bg-white p-4 dark:border-white/10 dark:bg-white/5">
-          <p className="text-sm text-black/50 dark:text-white/50">
+          <p className="truncate text-sm text-black/50 dark:text-white/50">
             {playerOne.name}
           </p>
 
-          <p className="mt-2 text-3xl font-semibold">
-            {formatElo(playerOneElo)}
+          <p className="mt-2 text-3xl font-semibold tabular-nums">
+            {formatElo(playerOneCurrentElo)}
           </p>
 
           <p className="text-sm text-black/45 dark:text-white/45">
             Current ELO
           </p>
+
+          <p
+            className={[
+              "mt-2 text-sm font-medium",
+              playerOneAnalytics.eloChange > 0
+                ? "text-emerald-600 dark:text-emerald-400"
+                : playerOneAnalytics.eloChange < 0
+                  ? "text-red-600 dark:text-red-400"
+                  : "text-black/45 dark:text-white/45",
+            ].join(" ")}
+          >
+            {playerOneAnalytics.eloChange > 0 ? "+" : ""}
+            {playerOneAnalytics.eloChange.toLocaleString()} during period
+          </p>
         </div>
 
         <div className="rounded-xl border border-black/10 bg-white p-4 dark:border-white/10 dark:bg-white/5">
           <p className="text-sm text-black/50 dark:text-white/50">
-            ELO difference
+            Current ELO difference
           </p>
 
           <div className="mt-2 flex items-center gap-2">
@@ -144,33 +216,47 @@ export function PlayerComparisonPanel({
                 <TrendingDown className="size-5" aria-hidden="true" />
               ))}
 
-            <p className="text-3xl font-semibold">
-              {difference === null
-                ? "—"
-                : Math.abs(difference).toLocaleString()}
+            <p className="text-3xl font-semibold tabular-nums">
+              {formatDifference(difference)}
             </p>
           </div>
 
           <p className="text-sm text-black/45 dark:text-white/45">
-            {difference === null || difference === 0
-              ? "Players are level"
-              : difference > 0
-                ? `${playerOne.name} leads`
-                : `${playerTwo.name} leads`}
+            {difference === null
+              ? "Difference unavailable"
+              : difference === 0
+                ? "Players are level"
+                : difference > 0
+                  ? `${playerOne.name} leads`
+                  : `${playerTwo.name} leads`}
           </p>
         </div>
 
         <div className="rounded-xl border border-black/10 bg-white p-4 dark:border-white/10 dark:bg-white/5">
-          <p className="text-sm text-black/50 dark:text-white/50">
+          <p className="truncate text-sm text-black/50 dark:text-white/50">
             {playerTwo.name}
           </p>
 
-          <p className="mt-2 text-3xl font-semibold">
-            {formatElo(playerTwoElo)}
+          <p className="mt-2 text-3xl font-semibold tabular-nums">
+            {formatElo(playerTwoCurrentElo)}
           </p>
 
           <p className="text-sm text-black/45 dark:text-white/45">
             Current ELO
+          </p>
+
+          <p
+            className={[
+              "mt-2 text-sm font-medium",
+              playerTwoAnalytics.eloChange > 0
+                ? "text-emerald-600 dark:text-emerald-400"
+                : playerTwoAnalytics.eloChange < 0
+                  ? "text-red-600 dark:text-red-400"
+                  : "text-black/45 dark:text-white/45",
+            ].join(" ")}
+          >
+            {playerTwoAnalytics.eloChange > 0 ? "+" : ""}
+            {playerTwoAnalytics.eloChange.toLocaleString()} during period
           </p>
         </div>
       </div>
@@ -193,22 +279,31 @@ export function PlayerComparisonPanel({
           </p>
         </div>
       ) : (
-        <div className="rounded-xl border border-black/10 bg-white p-3 sm:p-5 dark:border-white/10 dark:bg-black/10">
-          <EloComparisonChart
-            players={[
-              {
-                profileId: playerOne.profile_id,
-                name: playerOne.name,
-                points: playerOnePoints,
-              },
-              {
-                profileId: playerTwo.profile_id,
-                name: playerTwo.name,
-                points: playerTwoPoints,
-              },
-            ]}
+        <>
+          <div className="rounded-xl border border-black/10 bg-white p-3 sm:p-5 dark:border-white/10 dark:bg-black/10">
+            <EloComparisonChart
+              players={[
+                {
+                  profileId: playerOne.profile_id,
+                  name: playerOne.name,
+                  points: playerOnePoints,
+                },
+                {
+                  profileId: playerTwo.profile_id,
+                  name: playerTwo.name,
+                  points: playerTwoPoints,
+                },
+              ]}
+            />
+          </div>
+
+          <ComparisonMetricsTable
+            playerOneName={playerOne.name}
+            playerTwoName={playerTwo.name}
+            playerOne={playerOneAnalytics}
+            playerTwo={playerTwoAnalytics}
           />
-        </div>
+        </>
       )}
     </section>
   );
