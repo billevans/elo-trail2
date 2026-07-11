@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { Aoe4WorldRequestError } from "@/services/aoe4world/client";
 import { getPlayerGames } from "@/services/aoe4world/history";
 import { buildEloHistory } from "@/services/aoe4world/timeline";
 import type { ApiFailure, ApiSuccess } from "@/types/api";
@@ -7,7 +8,12 @@ import type { EloHistory, HistoryLeaderboard } from "@/types/history";
 
 const DEFAULT_HISTORY_DAYS = 180;
 const MAX_HISTORY_DAYS = 180;
-const MAX_HISTORY_PAGES = 100;
+
+/*
+ * Forty pages × 50 games limits one history request
+ * to a maximum of 2,000 game records.
+ */
+const MAX_HISTORY_PAGES = 40;
 
 interface RouteContext {
   params: Promise<{
@@ -56,6 +62,13 @@ function failure(
 function getSinceDate(days: number): string {
   const date = new Date();
 
+  /*
+   * Normalise to UTC midnight before subtracting the
+   * requested number of days. This keeps the generated
+   * `since` value stable for the entire day, improving
+   * cache reuse for repeated requests.
+   */
+  date.setUTCHours(0, 0, 0, 0);
   date.setUTCDate(date.getUTCDate() - days);
 
   return date.toISOString();
@@ -115,26 +128,34 @@ export async function GET(request: Request, context: RouteContext) {
         headers: {
           "Cache-Control": "public, s-maxage=300, stale-while-revalidate=600",
 
-          "X-Elo-Trail-Data-Version": "matchmaking-elo-paginated-v1",
+          "X-Elo-Trail-Data-Version": "responsible-api-v1",
 
           "X-Elo-Trail-History-Days": String(days),
 
           "X-Elo-Trail-Games-Fetched": String(games.length),
+
+          "X-Elo-Trail-Max-Pages": String(MAX_HISTORY_PAGES),
         },
       },
     );
   } catch (error) {
-    console.error("Failed to load paginated matchmaking ELO history", {
-      playerId,
-      leaderboard,
-      since,
-      error,
-    });
+    if (error instanceof Aoe4WorldRequestError && error.status === 429) {
+      return NextResponse.json(
+        {
+          error: {
+            code: "RATE_LIMITED",
+            message: "AoE4World is temporarily rate limiting requests.",
+          },
+        },
+        {
+          status: 429,
+          headers: {
+            "Retry-After": error.retryAfter ?? "60",
+          },
+        },
+      );
+    }
 
-    return failure(
-      502,
-      "HISTORY_UPSTREAM_ERROR",
-      "Matchmaking ELO history is temporarily unavailable.",
-    );
+    throw error;
   }
 }

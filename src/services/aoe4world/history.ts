@@ -5,8 +5,24 @@ import type { Aoe4WorldGame, Aoe4WorldGamesResponse } from "./history-types";
 
 const DEFAULT_PAGE_SIZE = 50;
 const MAX_PAGE_SIZE = 50;
-const DEFAULT_MAX_PAGES = 100;
-const MAX_ALLOWED_PAGES = 200;
+
+/*
+ * Forty pages allows up to 2,000 games in a 180-day
+ * window while preventing unbounded extraction.
+ */
+const DEFAULT_MAX_PAGES = 40;
+const MAX_ALLOWED_PAGES = 40;
+
+/*
+ * Keep upstream pressure low, especially when comparing
+ * two players at the same time.
+ */
+const PAGE_CONCURRENCY = 2;
+
+type NormalisedPlayerGamesOptions = Required<
+  Pick<PlayerGamesOptions, "pageSize" | "maxPages">
+> &
+  Pick<PlayerGamesOptions, "leaderboard" | "since">;
 
 function getGameKey(game: Aoe4WorldGame): string {
   if (game.game_id !== undefined) {
@@ -37,8 +53,7 @@ function deduplicateGames(games: Aoe4WorldGame[]): Aoe4WorldGame[] {
 function buildGamesEndpoint(
   playerId: number,
   page: number,
-  options: Required<Pick<PlayerGamesOptions, "pageSize" | "maxPages">> &
-    Pick<PlayerGamesOptions, "leaderboard" | "since">,
+  options: NormalisedPlayerGamesOptions,
 ): string {
   const params = new URLSearchParams({
     page: String(page),
@@ -59,8 +74,7 @@ function buildGamesEndpoint(
 async function getGamesPage(
   playerId: number,
   page: number,
-  options: Required<Pick<PlayerGamesOptions, "pageSize" | "maxPages">> &
-    Pick<PlayerGamesOptions, "leaderboard" | "since">,
+  options: NormalisedPlayerGamesOptions,
 ): Promise<Aoe4WorldGamesResponse> {
   const response = await aoe4Request<Aoe4WorldGamesResponse | Aoe4WorldGame[]>(
     buildGamesEndpoint(playerId, page, options),
@@ -97,7 +111,7 @@ export async function getPlayerGames(
     MAX_ALLOWED_PAGES,
   );
 
-  const requestOptions = {
+  const requestOptions: NormalisedPlayerGamesOptions = {
     leaderboard: options.leaderboard,
     since: options.since,
     pageSize,
@@ -117,24 +131,32 @@ export async function getPlayerGames(
     return deduplicateGames(firstPageGames);
   }
 
-  const requiredPages = Math.min(Math.ceil(totalCount / pageSize), maxPages);
+  const availablePages = Math.ceil(totalCount / pageSize);
+
+  const requiredPages = Math.min(availablePages, maxPages);
+
+  if (availablePages > maxPages) {
+    console.warn("AoE4World history page limit reached", {
+      playerId,
+      totalCount,
+      availablePages,
+      maxPages,
+    });
+  }
 
   const allGames = [...firstPageGames];
 
   /*
-   * Fetch pages in small batches rather than firing every
-   * request simultaneously. This is friendlier to the
-   * upstream API and avoids excessive concurrent sockets.
+   * Fetch only two pages concurrently to keep upstream
+   * request pressure low.
    */
-  const concurrency = 5;
-
   for (
     let firstPageInBatch = 2;
     firstPageInBatch <= requiredPages;
-    firstPageInBatch += concurrency
+    firstPageInBatch += PAGE_CONCURRENCY
   ) {
     const lastPageInBatch = Math.min(
-      firstPageInBatch + concurrency - 1,
+      firstPageInBatch + PAGE_CONCURRENCY - 1,
       requiredPages,
     );
 
