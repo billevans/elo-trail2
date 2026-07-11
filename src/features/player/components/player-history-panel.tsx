@@ -58,10 +58,6 @@ function getMatchmakingCareerSummary(
 }
 
 function getRangeStart(range: HistoryRange) {
-  if (range === "all") {
-    return null;
-  }
-
   const days = Number.parseInt(range, 10);
   const start = new Date();
 

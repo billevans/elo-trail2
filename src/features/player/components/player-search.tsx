@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Search } from "lucide-react";
 
 import type { Aoe4WorldPlayer } from "@/services/aoe4world";
@@ -16,7 +16,44 @@ export function PlayerSearch() {
     null,
   );
 
+  const historyPanelRef = useRef<HTMLDivElement | null>(null);
+
   const { data, isLoading, error } = usePlayerSearch(query);
+
+  useEffect(() => {
+    if (!selectedPlayer) {
+      return;
+    }
+
+    /*
+     * Wait until React has rendered the history panel,
+     * then move it into view.
+     */
+    const animationFrame = window.requestAnimationFrame(() => {
+      historyPanelRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    });
+
+    return () => {
+      window.cancelAnimationFrame(animationFrame);
+    };
+  }, [selectedPlayer]);
+
+  function handleSelectPlayer(player: Aoe4WorldPlayer) {
+    setSelectedPlayer(player);
+  }
+
+  function handleQueryChange(value: string) {
+    setQuery(value);
+
+    /*
+     * Clear the previous panel when starting a new search
+     * so the old player is not displayed below new results.
+     */
+    setSelectedPlayer(null);
+  }
 
   return (
     <div className="space-y-8">
@@ -28,7 +65,7 @@ export function PlayerSearch() {
 
         <input
           value={query}
-          onChange={(event) => setQuery(event.target.value)}
+          onChange={(event) => handleQueryChange(event.target.value)}
           placeholder="Search for an Age of Empires IV player"
           aria-label="Search players"
           className="w-full rounded-xl border border-black/10 bg-white py-3 pr-4 pl-12 shadow-sm transition outline-none focus:border-black/35 focus:ring-4 focus:ring-black/5 dark:border-white/10 dark:bg-white/5 dark:focus:border-white/35 dark:focus:ring-white/5"
@@ -66,7 +103,7 @@ export function PlayerSearch() {
                 key={player.profile_id}
                 player={player}
                 isSelected={selectedPlayer?.profile_id === player.profile_id}
-                onSelect={setSelectedPlayer}
+                onSelect={handleSelectPlayer}
               />
             ))}
           </div>
@@ -84,10 +121,12 @@ export function PlayerSearch() {
       )}
 
       {selectedPlayer && (
-        <PlayerHistoryPanel
-          player={selectedPlayer}
-          onClose={() => setSelectedPlayer(null)}
-        />
+        <div ref={historyPanelRef} className="scroll-mt-6">
+          <PlayerHistoryPanel
+            player={selectedPlayer}
+            onClose={() => setSelectedPlayer(null)}
+          />
+        </div>
       )}
     </div>
   );
