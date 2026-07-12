@@ -14,7 +14,7 @@ export const HOMEPAGE_LEADERBOARD_KEY = "rm-1v1-elo-top-8-90d";
 
 const HISTORY_DAYS = 90;
 const HISTORY_PAGE_SIZE = 50;
-const HISTORY_MAX_PAGES = 72;
+const HISTORY_MAX_PAGES = 40;
 const PLAYER_BATCH_SIZE = 2;
 
 function getSinceDate(): string {
