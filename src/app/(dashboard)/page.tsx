@@ -30,9 +30,8 @@ export default function DashboardPage() {
             Compare two players
           </Link>
         </header>
-
-        <HomepageLeaderboard />
         <PlayerSearch />
+        <HomepageLeaderboard />
       </div>
     </main>
   );
