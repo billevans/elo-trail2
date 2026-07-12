@@ -7,12 +7,11 @@ const DEFAULT_PAGE_SIZE = 50;
 const MAX_PAGE_SIZE = 50;
 
 /*
- * Seventy-two pages × 50 games permits at most 3,600
- * ranked 1v1 games inside the requested 180-day window.
- * This is based on locating an average of 20 games per day over 180 days to reflect the estimated upper estimate of top players' activity.
+ * Forty pages × 50 games permits at most 2,000
+ * matchmaking-ELO game records per player request.
  */
-const DEFAULT_MAX_PAGES = 72;
-const MAX_ALLOWED_PAGES = 72;
+const DEFAULT_MAX_PAGES = 40;
+const MAX_ALLOWED_PAGES = 40;
 
 /*
  * Keep upstream pressure low, especially when comparing

@@ -10,11 +10,10 @@ const DEFAULT_HISTORY_DAYS = 180;
 const MAX_HISTORY_DAYS = 180;
 
 /*
- * Seventy-two pages × 50 games gives a maximum of
- * 3,600 matchmaking-ELO game records.
- * Based on 20 games per day over 180 days in line with upper estimates of top players' activity.
+ * Forty pages × 50 games gives a maximum of
+ * 2,000 matchmaking-ELO game records.
  */
-const MAX_HISTORY_PAGES = 72;
+const MAX_HISTORY_PAGES = 40;
 
 interface RouteContext {
   params: Promise<{
@@ -135,7 +134,7 @@ export async function GET(request: Request, context: RouteContext) {
            */
           "Cache-Control": "public, s-maxage=900, stale-while-revalidate=900",
 
-          "X-Elo-Trail-Data-Version": "responsible-api-3600-v1",
+          "X-Elo-Trail-Data-Version": "responsible-api-2000-v2",
 
           "X-Elo-Trail-History-Days": String(MAX_HISTORY_PAGES),
 

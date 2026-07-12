@@ -8,7 +8,7 @@ export interface UsePlayerHistoryOptions {
   enabled?: boolean;
 }
 
-const HISTORY_DATA_VERSION = "responsible-api-3600-v1";
+const HISTORY_DATA_VERSION = "responsible-api-2000-v2";
 
 const HISTORY_STALE_TIME_MS = 15 * 60 * 1000;
 
