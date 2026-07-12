@@ -1,5 +1,5 @@
 export * from "./components/homepage-leaderboard";
-export * from "./components/leaderboard-mini-chart";
+export * from "./components/homepage-leaderboard-chart";
 export * from "./lib/homepage-leaderboard";
 export * from "./services/get-homepage-leaderboard";
 export * from "./services/refresh-homepage-leaderboard";

@@ -6,9 +6,9 @@ import { Crown, LoaderCircle } from "lucide-react";
 import type {
   HomepageLeaderboardApiResponse,
   HomepageLeaderboardData,
-} from "@/features/leaderboard/types/homepage-leaderboard";
+} from "../types/homepage-leaderboard";
 
-import { LeaderboardMiniChart } from "./leaderboard-mini-chart";
+import { HomepageLeaderboardChart } from "./homepage-leaderboard-chart";
 
 async function fetchHomepageLeaderboard(): Promise<HomepageLeaderboardData> {
   const response = await fetch("/api/homepage-leaderboard", {
@@ -49,6 +49,8 @@ export function HomepageLeaderboard() {
 
     refetchOnWindowFocus: false,
 
+    refetchOnReconnect: false,
+
     refetchInterval: false,
   });
 
@@ -56,6 +58,7 @@ export function HomepageLeaderboard() {
     return (
       <section
         role="status"
+        aria-live="polite"
         className="flex min-h-64 items-center justify-center rounded-2xl border border-black/10 dark:border-white/10"
       >
         <div className="flex items-center gap-3 text-black/55 dark:text-white/55">
@@ -72,7 +75,7 @@ export function HomepageLeaderboard() {
         <h2 className="font-semibold">Daily leaderboard unavailable</h2>
 
         <p className="mt-1 text-sm text-black/55 dark:text-white/55">
-          The last daily snapshot could not be loaded. Player search remains
+          The latest daily snapshot could not be loaded. Player search remains
           available below.
         </p>
       </section>
@@ -81,7 +84,7 @@ export function HomepageLeaderboard() {
 
   return (
     <section aria-labelledby="top-players-heading" className="space-y-5">
-      <header className="flex flex-col justify-between gap-2 sm:flex-row sm:items-end">
+      <header className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
         <div>
           <div className="flex items-center gap-2">
             <Crown className="size-5" aria-hidden="true" />
@@ -95,7 +98,8 @@ export function HomepageLeaderboard() {
           </div>
 
           <p className="mt-1 text-sm text-black/55 dark:text-white/55">
-            Current top eight RM 1v1 players with 90-day ELO timelines.
+            Ninety-day matchmaking ELO histories for the current top eight RM
+            1v1 players.
           </p>
         </div>
 
@@ -104,47 +108,35 @@ export function HomepageLeaderboard() {
         </p>
       </header>
 
-      <div className="grid gap-4 md:grid-cols-2">
+      <div className="rounded-2xl border border-black/10 bg-white p-3 shadow-sm sm:p-5 dark:border-white/10 dark:bg-white/[0.03]">
+        <HomepageLeaderboardChart players={data.players} />
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {data.players.map((player) => (
           <article
             key={player.profileId}
-            className="rounded-2xl border border-black/10 bg-white p-4 shadow-sm dark:border-white/10 dark:bg-white/5"
+            className="flex items-center justify-between gap-4 rounded-xl border border-black/10 bg-white p-3 dark:border-white/10 dark:bg-white/5"
           >
-            <div className="flex items-start justify-between gap-4">
-              <div className="min-w-0">
-                <p className="text-sm font-semibold text-black/45 dark:text-white/45">
-                  Rank #{player.rank}
-                </p>
+            <div className="min-w-0">
+              <p className="text-xs font-semibold text-black/45 dark:text-white/45">
+                Rank #{player.rank}
+              </p>
 
-                <h3 className="mt-1 truncate text-lg font-semibold">
-                  {player.name}
-                </h3>
+              <h3 className="truncate font-semibold">{player.name}</h3>
 
-                <p className="text-xs text-black/50 dark:text-white/50">
-                  Profile #{player.profileId}
-                  {player.country ? ` · ${player.country.toUpperCase()}` : ""}
-                </p>
-              </div>
-
-              <div className="shrink-0 text-right">
-                <p className="text-2xl font-bold tabular-nums">
-                  {player.currentElo.toLocaleString()}
-                </p>
-
-                <p className="text-xs text-black/45 dark:text-white/45">
-                  Current ELO
-                </p>
-              </div>
+              <p className="text-xs text-black/45 dark:text-white/45">
+                {player.gamesInWindow.toLocaleString()} games in 90 days
+              </p>
             </div>
 
-            <div className="mt-4 text-black dark:text-white">
-              <LeaderboardMiniChart points={player.points} name={player.name} />
-            </div>
+            <div className="shrink-0 text-right">
+              <p className="text-xl font-bold tabular-nums">
+                {player.currentElo.toLocaleString()}
+              </p>
 
-            <p className="mt-2 text-xs text-black/45 dark:text-white/45">
-              {player.gamesInWindow.toLocaleString()} games in the 90-day
-              snapshot
-            </p>
+              <p className="text-xs text-black/45 dark:text-white/45">ELO</p>
+            </div>
           </article>
         ))}
       </div>
