@@ -47,3 +47,5 @@ ELO Trail uses the AoE4World public API responsibly.
 - History requests are bounded
 - Low request concurrency
 - Requests identify the application with a dedicated User-Agent
+
+<!-- Vercel preview deployment test -->
