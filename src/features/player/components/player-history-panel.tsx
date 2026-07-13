@@ -5,17 +5,18 @@ import { format } from "date-fns";
 import { AlertCircle, LoaderCircle, Swords, X } from "lucide-react";
 
 import type { Aoe4WorldPlayer } from "@/services/aoe4world";
-import { calculateEloStatistics } from "@/services/aoe4world/statistics";
-import type { EloPoint, EloStatistics, MatchSummary } from "@/types/history";
+import type { EloPoint, MatchSummary } from "@/types/history";
 
 import { usePlayerHistory } from "../hooks/use-player-history";
 
 import { EloHistoryChart } from "./elo-history-chart";
+
+import { calculatePlayerAnalytics } from "@/services/analytics";
 import {
   HistoryRangeSelector,
   type HistoryRange,
 } from "./history-range-selector";
-import { HistoryStatCards } from "./history-stat-cards";
+import { PlayerAnalyticsCards } from "./player-analytics-cards";
 
 interface PlayerHistoryPanelProps {
   player: Aoe4WorldPlayer;
@@ -86,71 +87,6 @@ function filterMatchesByRange(matches: MatchSummary[], range: HistoryRange) {
   return matches.filter((match) => new Date(match.startedAt) >= start);
 }
 
-function createDisplayStatistics(
-  points: EloPoint[],
-  matches: MatchSummary[],
-  career: MatchmakingCareerSummary,
-): EloStatistics {
-  const calculated = calculateEloStatistics(matches);
-
-  if (points.length === 0) {
-    return {
-      ...calculated,
-
-      currentRating: career.currentElo,
-
-      games: career.games,
-
-      wins: career.wins,
-
-      losses: career.losses,
-
-      winRate: career.winRate,
-    };
-  }
-
-  const ratings = points.map((point) => point.rating);
-
-  const firstPoint = points[0];
-  const lastPoint = points.at(-1);
-
-  const currentRating = career.currentElo ?? lastPoint?.rating ?? null;
-
-  const firstRating =
-    firstPoint === undefined
-      ? null
-      : firstPoint.rating - firstPoint.ratingChange;
-
-  return {
-    currentRating,
-
-    peakRating:
-      currentRating === null
-        ? Math.max(...ratings)
-        : Math.max(...ratings, currentRating),
-
-    lowestRating: Math.min(...ratings),
-
-    ratingChange:
-      currentRating !== null && firstRating !== null
-        ? currentRating - firstRating
-        : calculated.ratingChange,
-
-    /*
-     * Career totals come from rm_1v1_elo.
-     * The games endpoint is paginated and may contain only
-     * the most recent 50 history records.
-     */
-    games: career.games,
-
-    wins: career.wins,
-
-    losses: career.losses,
-
-    winRate: career.winRate,
-  };
-}
-
 export function PlayerHistoryPanel({
   player,
   onClose,
@@ -176,8 +112,13 @@ export function PlayerHistoryPanel({
     [data?.matches, range],
   );
 
-  const statistics = useMemo(
-    () => createDisplayStatistics(filteredPoints, filteredMatches, career),
+  const analytics = useMemo(
+    () =>
+      calculatePlayerAnalytics({
+        points: filteredPoints,
+        matches: filteredMatches,
+        career,
+      }),
     [career, filteredMatches, filteredPoints],
   );
 
@@ -270,7 +211,7 @@ export function PlayerHistoryPanel({
             <HistoryRangeSelector value={range} onChange={setRange} />
           </div>
 
-          <HistoryStatCards statistics={statistics} />
+          <PlayerAnalyticsCards analytics={analytics} />
 
           <div className="rounded-xl border border-black/10 bg-white p-3 sm:p-5 dark:border-white/10 dark:bg-black/10">
             <EloHistoryChart points={filteredPoints} />
