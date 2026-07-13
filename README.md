@@ -58,8 +58,11 @@ ELO Trail uses the AoE4World public API responsibly.
 - Requests identify the application with a dedicated User-Agent
 - Current Data Refresh Strategy
 
-## Data	Refresh Strategy
-- Homepage Top 8 leaderboard	Refreshed once daily via scheduled Vercel Cron job and cached in PostgreSQL
-- Player search results	Cached for a short period with server-side and browser caching
-- Individual player history	Cached and refreshed only when necessary, with browser cache-busting when new history is requested
-- Comparison data	Reuses cached player history wherever possible
+## Data Refresh Strategy
+
+- Homepage Top 8 leaderboard Refreshed once daily via scheduled Vercel Cron job and cached in PostgreSQL
+- Player search results Cached for a short period with server-side and browser caching
+- Individual player history Cached and refreshed only when necessary, with browser cache-busting when new history is requested
+- Comparison data Reuses cached player history wherever possible
+
+## Git commit test
