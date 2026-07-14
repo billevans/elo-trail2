@@ -74,6 +74,7 @@ export interface PlayerAnalytics {
   streaks: StreakAnalytics;
   activity: ActivityAnalytics;
   civilisations: CivilisationAnalytics;
+  opponents: OpponentAnalytics;
 }
 
 export interface PlayerAnalyticsInput {
@@ -106,4 +107,46 @@ export interface CivilisationAnalytics {
   favourite: CivilisationHighlight;
   strongest: CivilisationHighlight;
   weakest: CivilisationHighlight;
+}
+
+export interface OpponentPerformance {
+  opponentKey: string;
+  profileId: number | null;
+  name: string;
+  games: number;
+  wins: number;
+  losses: number;
+  unknownResults: number;
+  winRate: number | null;
+  netEloChange: number;
+  averageOpponentElo: number | null;
+  highestOpponentElo: number | null;
+  lastPlayedAt: string | null;
+}
+
+export interface OpponentMatchHighlight {
+  profileId: number | null;
+  name: string | null;
+  opponentElo: number | null;
+  playedAt: string | null;
+  gameId: number | string | null;
+}
+
+export interface OpponentSummaryHighlight {
+  profileId: number | null;
+  name: string | null;
+  games: number;
+  wins: number;
+  losses: number;
+  winRate: number | null;
+}
+
+export interface OpponentAnalytics {
+  uniqueOpponents: number;
+  repeatOpponents: number;
+  averageOpponentElo: number | null;
+  strongestDefeated: OpponentMatchHighlight;
+  highestFaced: OpponentMatchHighlight;
+  mostFrequent: OpponentSummaryHighlight;
+  opponents: OpponentPerformance[];
 }

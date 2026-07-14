@@ -17,6 +17,7 @@ import {
   type HistoryRange,
 } from "./history-range-selector";
 import { PlayerAnalyticsCards } from "./player-analytics-cards";
+import { OpponentAnalyticsPanel } from "./opponent-analytics-panel";
 
 interface PlayerHistoryPanelProps {
   player: Aoe4WorldPlayer;
@@ -217,6 +218,8 @@ export function PlayerHistoryPanel({
           </div>
 
           <CivilisationAnalyticsPanel analytics={analytics.civilisations} />
+
+          <OpponentAnalyticsPanel analytics={analytics.opponents} />
 
           <div>
             <div className="mb-3">

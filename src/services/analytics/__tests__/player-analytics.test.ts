@@ -64,5 +64,7 @@ describe("calculatePlayerAnalytics", () => {
     });
 
     expect(analytics.activity.firstGameAt).toBe("2026-01-01T00:00:00Z");
+
+    expect(analytics.opponents.opponents).toBeDefined();
   });
 });

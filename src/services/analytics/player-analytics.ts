@@ -7,6 +7,7 @@ import {
 } from "./statistics";
 import { calculateStreaks } from "./streaks";
 import type { PlayerAnalytics, PlayerAnalyticsInput } from "./types";
+import { calculateOpponentAnalytics } from "./opponents";
 
 export function calculatePlayerAnalytics({
   points,
@@ -30,5 +31,6 @@ export function calculatePlayerAnalytics({
     streaks: calculateStreaks(matches),
     activity: calculateActivity(matches),
     civilisations: calculateCivilisationAnalytics(matches),
+    opponents: calculateOpponentAnalytics(matches),
   };
 }

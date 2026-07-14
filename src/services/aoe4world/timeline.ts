@@ -134,6 +134,11 @@ function toMatchSummary(
     opponentProfileId: opponent?.profile_id ?? undefined,
 
     opponentName: opponent?.name ?? undefined,
+
+    opponentRating:
+      typeof opponent?.mmr === "number" && Number.isFinite(opponent.mmr)
+        ? opponent.mmr
+        : undefined,
   };
 }
 

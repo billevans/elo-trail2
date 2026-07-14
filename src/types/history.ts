@@ -32,6 +32,7 @@ export interface MatchSummary {
   ratingChange: number;
   opponentProfileId?: number;
   opponentName?: string;
+  opponentRating?: number;
 }
 
 export interface EloStatistics {
