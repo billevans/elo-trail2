@@ -4,14 +4,14 @@ import { useMemo, useState } from "react";
 import { format } from "date-fns";
 import { AlertCircle, LoaderCircle, Swords, X } from "lucide-react";
 
+import { calculatePlayerAnalytics } from "@/services/analytics";
 import type { Aoe4WorldPlayer } from "@/services/aoe4world";
 import type { EloPoint, MatchSummary } from "@/types/history";
 
 import { usePlayerHistory } from "../hooks/use-player-history";
 
+import { CivilisationAnalyticsPanel } from "./civilisation-analytics-panel";
 import { EloHistoryChart } from "./elo-history-chart";
-
-import { calculatePlayerAnalytics } from "@/services/analytics";
 import {
   HistoryRangeSelector,
   type HistoryRange,
@@ -58,8 +58,9 @@ function getMatchmakingCareerSummary(
   };
 }
 
-function getRangeStart(range: HistoryRange) {
+function getRangeStart(range: HistoryRange): Date {
   const days = Number.parseInt(range, 10);
+
   const start = new Date();
 
   start.setDate(start.getDate() - days);
@@ -67,22 +68,20 @@ function getRangeStart(range: HistoryRange) {
   return start;
 }
 
-function filterPointsByRange(points: EloPoint[], range: HistoryRange) {
+function filterPointsByRange(
+  points: EloPoint[],
+  range: HistoryRange,
+): EloPoint[] {
   const start = getRangeStart(range);
-
-  if (!start) {
-    return points;
-  }
 
   return points.filter((point) => new Date(point.timestamp) >= start);
 }
 
-function filterMatchesByRange(matches: MatchSummary[], range: HistoryRange) {
+function filterMatchesByRange(
+  matches: MatchSummary[],
+  range: HistoryRange,
+): MatchSummary[] {
   const start = getRangeStart(range);
-
-  if (!start) {
-    return matches;
-  }
 
   return matches.filter((match) => new Date(match.startedAt) >= start);
 }
@@ -216,6 +215,8 @@ export function PlayerHistoryPanel({
           <div className="rounded-xl border border-black/10 bg-white p-3 sm:p-5 dark:border-white/10 dark:bg-black/10">
             <EloHistoryChart points={filteredPoints} />
           </div>
+
+          <CivilisationAnalyticsPanel analytics={analytics.civilisations} />
 
           <div>
             <div className="mb-3">

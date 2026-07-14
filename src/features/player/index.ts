@@ -9,3 +9,4 @@ export * from "./hooks/use-player-profile";
 export * from "./hooks/use-player-search";
 export * from "./components/player-analytics-cards";
 export * from "./lib";
+export * from "./components/civilisation-analytics-panel";

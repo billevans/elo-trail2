@@ -1,4 +1,5 @@
 import { calculateActivity } from "./activity";
+import { calculateCivilisationAnalytics } from "./civilisations";
 import {
   calculateMatchAnalytics,
   calculateRatingAnalytics,
@@ -28,5 +29,6 @@ export function calculatePlayerAnalytics({
     career: careerSummary,
     streaks: calculateStreaks(matches),
     activity: calculateActivity(matches),
+    civilisations: calculateCivilisationAnalytics(matches),
   };
 }

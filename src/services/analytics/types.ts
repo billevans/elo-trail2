@@ -73,10 +73,37 @@ export interface PlayerAnalytics {
   career: PlayerCareerSummary;
   streaks: StreakAnalytics;
   activity: ActivityAnalytics;
+  civilisations: CivilisationAnalytics;
 }
 
 export interface PlayerAnalyticsInput {
   points: EloPoint[];
   matches: MatchSummary[];
   career?: Partial<PlayerCareerSummary>;
+}
+
+export interface CivilisationPerformance {
+  civilisation: string;
+  games: number;
+  wins: number;
+  losses: number;
+  unknownResults: number;
+  winRate: number | null;
+  netEloChange: number;
+  averageEloChange: number | null;
+  averageGain: number | null;
+  averageLoss: number | null;
+}
+
+export interface CivilisationHighlight {
+  civilisation: string | null;
+  games: number;
+  winRate: number | null;
+}
+
+export interface CivilisationAnalytics {
+  civilisations: CivilisationPerformance[];
+  favourite: CivilisationHighlight;
+  strongest: CivilisationHighlight;
+  weakest: CivilisationHighlight;
 }
