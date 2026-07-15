@@ -1,4 +1,15 @@
-import { Crosshair, Repeat2, ShieldCheck, Swords, Users } from "lucide-react";
+"use client";
+
+import { useState } from "react";
+import {
+  ChevronDown,
+  ChevronUp,
+  Crosshair,
+  Repeat2,
+  ShieldCheck,
+  Swords,
+  Users,
+} from "lucide-react";
 
 import type {
   OpponentAnalytics,
@@ -9,6 +20,8 @@ import type {
 interface OpponentAnalyticsPanelProps {
   analytics: OpponentAnalytics;
 }
+
+const COLLAPSED_ROW_COUNT = 3;
 
 function formatNumber(value: number | null): string {
   return value === null ? "—" : Math.round(value).toLocaleString();
@@ -99,6 +112,14 @@ function RivalryCard({ highlight }: RivalryCardProps) {
 export function OpponentAnalyticsPanel({
   analytics,
 }: OpponentAnalyticsPanelProps) {
+  const [showAll, setShowAll] = useState(false);
+
+  const hasAdditionalRows = analytics.opponents.length > COLLAPSED_ROW_COUNT;
+
+  const visibleOpponents = showAll
+    ? analytics.opponents
+    : analytics.opponents.slice(0, COLLAPSED_ROW_COUNT);
+
   if (analytics.opponents.length === 0) {
     return (
       <section className="rounded-xl border border-dashed border-black/15 p-8 text-center dark:border-white/15">
@@ -164,30 +185,30 @@ export function OpponentAnalyticsPanel({
         </article>
       </div>
 
+      <p className="text-xs text-black/45 dark:text-white/45">
+        Showing {visibleOpponents.length.toLocaleString()} of{" "}
+        {analytics.opponents.length.toLocaleString()} opponents, ordered by
+        games played.
+      </p>
+
       <div className="overflow-x-auto rounded-xl border border-black/10 dark:border-white/10">
         <table className="w-full min-w-[820px] text-left text-sm">
           <thead className="bg-black/[0.03] text-xs tracking-wide text-black/50 uppercase dark:bg-white/[0.05] dark:text-white/50">
             <tr>
               <th className="px-4 py-3 font-medium">Opponent</th>
-
               <th className="px-4 py-3 text-right font-medium">Games</th>
-
               <th className="px-4 py-3 text-right font-medium">Record</th>
-
               <th className="px-4 py-3 text-right font-medium">Win rate</th>
-
               <th className="px-4 py-3 text-right font-medium">
                 Avg opponent ELO
               </th>
-
               <th className="px-4 py-3 text-right font-medium">Highest ELO</th>
-
               <th className="px-4 py-3 text-right font-medium">Net ELO</th>
             </tr>
           </thead>
 
           <tbody className="divide-y divide-black/10 dark:divide-white/10">
-            {analytics.opponents.map((opponent) => (
+            {visibleOpponents.map((opponent) => (
               <tr
                 key={opponent.opponentKey}
                 className="bg-white dark:bg-white/[0.025]"
@@ -241,6 +262,29 @@ export function OpponentAnalyticsPanel({
           </tbody>
         </table>
       </div>
+
+      {hasAdditionalRows && (
+        <div className="flex justify-center">
+          <button
+            type="button"
+            onClick={() => setShowAll((current) => !current)}
+            aria-expanded={showAll}
+            className="inline-flex items-center gap-2 rounded-lg border border-black/10 px-4 py-2 text-sm font-medium transition-colors hover:bg-black/5 dark:border-white/10 dark:hover:bg-white/10"
+          >
+            {showAll ? (
+              <>
+                <ChevronUp className="size-4" aria-hidden="true" />
+                Show fewer opponents
+              </>
+            ) : (
+              <>
+                <ChevronDown className="size-4" aria-hidden="true" />
+                Show all {analytics.opponents.length.toLocaleString()} opponents
+              </>
+            )}
+          </button>
+        </div>
+      )}
     </section>
   );
 }

@@ -12,6 +12,7 @@ import { PlayerHistoryPanel } from "./player-history-panel";
 
 export function PlayerSearch() {
   const [query, setQuery] = useState("");
+  const [isResultsOpen, setIsResultsOpen] = useState(false);
   const [selectedPlayer, setSelectedPlayer] = useState<Aoe4WorldPlayer | null>(
     null,
   );
@@ -25,10 +26,6 @@ export function PlayerSearch() {
       return;
     }
 
-    /*
-     * Wait until React has rendered the history panel,
-     * then move it into view.
-     */
     const animationFrame = window.requestAnimationFrame(() => {
       historyPanelRef.current?.scrollIntoView({
         behavior: "smooth",
@@ -43,16 +40,25 @@ export function PlayerSearch() {
 
   function handleSelectPlayer(player: Aoe4WorldPlayer) {
     setSelectedPlayer(player);
+    setQuery(player.name);
+    setIsResultsOpen(false);
   }
 
   function handleQueryChange(value: string) {
     setQuery(value);
+    setIsResultsOpen(true);
 
     /*
-     * Clear the previous panel when starting a new search
-     * so the old player is not displayed below new results.
+     * Once the user edits the query, the previous player panel
+     * is no longer the active search context.
      */
     setSelectedPlayer(null);
+  }
+
+  function handleSearchFocus() {
+    if (query.trim().length >= 3) {
+      setIsResultsOpen(true);
+    }
   }
 
   return (
@@ -64,21 +70,23 @@ export function PlayerSearch() {
         />
 
         <input
+          type="search"
           value={query}
           onChange={(event) => handleQueryChange(event.target.value)}
+          onFocus={handleSearchFocus}
           placeholder="Search for an Age of Empires IV player"
           aria-label="Search players"
           className="w-full rounded-xl border border-black/10 bg-white py-3 pr-4 pl-12 shadow-sm transition outline-none focus:border-black/35 focus:ring-4 focus:ring-black/5 dark:border-white/10 dark:bg-white/5 dark:focus:border-white/35 dark:focus:ring-white/5"
         />
       </div>
 
-      {isLoading && (
+      {isResultsOpen && isLoading && (
         <p className="text-sm text-black/55 dark:text-white/55">
           Searching players…
         </p>
       )}
 
-      {error && (
+      {isResultsOpen && error && (
         <p
           role="alert"
           className="rounded-lg border border-red-500/25 bg-red-500/5 p-3 text-sm text-red-700 dark:text-red-400"
@@ -87,7 +95,7 @@ export function PlayerSearch() {
         </p>
       )}
 
-      {data && data.length > 0 && (
+      {isResultsOpen && data && data.length > 0 && (
         <div>
           <div className="mb-3 flex items-center justify-between">
             <h2 className="font-semibold">Search results</h2>
@@ -110,21 +118,28 @@ export function PlayerSearch() {
         </div>
       )}
 
-      {data && data.length === 0 && query.trim().length >= 2 && !isLoading && (
-        <div className="rounded-xl border border-dashed border-black/15 p-8 text-center dark:border-white/15">
-          <p className="font-medium">No players found</p>
+      {isResultsOpen &&
+        data &&
+        data.length === 0 &&
+        query.trim().length >= 3 &&
+        !isLoading && (
+          <div className="rounded-xl border border-dashed border-black/15 p-8 text-center dark:border-white/15">
+            <p className="font-medium">No players found</p>
 
-          <p className="mt-1 text-sm text-black/55 dark:text-white/55">
-            Check the spelling or try another player name.
-          </p>
-        </div>
-      )}
+            <p className="mt-1 text-sm text-black/55 dark:text-white/55">
+              Check the spelling or try another player name.
+            </p>
+          </div>
+        )}
 
       {selectedPlayer && (
         <div ref={historyPanelRef} className="scroll-mt-6">
           <PlayerHistoryPanel
             player={selectedPlayer}
-            onClose={() => setSelectedPlayer(null)}
+            onClose={() => {
+              setSelectedPlayer(null);
+              setIsResultsOpen(false);
+            }}
           />
         </div>
       )}
