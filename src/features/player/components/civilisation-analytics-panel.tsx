@@ -1,4 +1,14 @@
-import { Crown, ShieldAlert, Swords, Trophy } from "lucide-react";
+"use client";
+
+import { useState } from "react";
+import {
+  ChevronDown,
+  ChevronUp,
+  Crown,
+  ShieldAlert,
+  Swords,
+  Trophy,
+} from "lucide-react";
 
 import type { CivilisationAnalytics } from "@/services/analytics";
 
@@ -7,6 +17,8 @@ import { formatCivilisationName } from "../lib";
 interface CivilisationAnalyticsPanelProps {
   analytics: CivilisationAnalytics;
 }
+
+const COLLAPSED_ROW_COUNT = 3;
 
 function formatPercentage(value: number | null): string {
   return value === null ? "—" : `${value.toFixed(1)}%`;
@@ -58,6 +70,15 @@ function HighlightCard({
 export function CivilisationAnalyticsPanel({
   analytics,
 }: CivilisationAnalyticsPanelProps) {
+  const [showAll, setShowAll] = useState(false);
+
+  const hasAdditionalRows =
+    analytics.civilisations.length > COLLAPSED_ROW_COUNT;
+
+  const visibleCivilisations = showAll
+    ? analytics.civilisations
+    : analytics.civilisations.slice(0, COLLAPSED_ROW_COUNT);
+
   if (analytics.civilisations.length === 0) {
     return (
       <section className="rounded-xl border border-dashed border-black/15 p-8 text-center dark:border-white/15">
@@ -128,28 +149,28 @@ export function CivilisationAnalyticsPanel({
         />
       </div>
 
+      <p className="text-xs text-black/45 dark:text-white/45">
+        Showing {visibleCivilisations.length.toLocaleString()} of{" "}
+        {analytics.civilisations.length.toLocaleString()} civilisations, ordered
+        by games played.
+      </p>
+
       <div className="overflow-x-auto rounded-xl border border-black/10 dark:border-white/10">
         <table className="w-full min-w-[720px] text-left text-sm">
           <thead className="bg-black/[0.03] text-xs tracking-wide text-black/50 uppercase dark:bg-white/[0.05] dark:text-white/50">
             <tr>
               <th className="px-4 py-3 font-medium">Civilisation</th>
-
               <th className="px-4 py-3 text-right font-medium">Games</th>
-
               <th className="px-4 py-3 text-right font-medium">Wins</th>
-
               <th className="px-4 py-3 text-right font-medium">Losses</th>
-
               <th className="px-4 py-3 text-right font-medium">Win rate</th>
-
               <th className="px-4 py-3 text-right font-medium">Net ELO</th>
-
               <th className="px-4 py-3 text-right font-medium">Avg change</th>
             </tr>
           </thead>
 
           <tbody className="divide-y divide-black/10 dark:divide-white/10">
-            {analytics.civilisations.map((entry) => (
+            {visibleCivilisations.map((entry) => (
               <tr
                 key={entry.civilisation}
                 className="bg-white dark:bg-white/[0.025]"
@@ -204,6 +225,30 @@ export function CivilisationAnalyticsPanel({
           </tbody>
         </table>
       </div>
+
+      {hasAdditionalRows && (
+        <div className="flex justify-center">
+          <button
+            type="button"
+            onClick={() => setShowAll((current) => !current)}
+            aria-expanded={showAll}
+            className="inline-flex items-center gap-2 rounded-lg border border-black/10 px-4 py-2 text-sm font-medium transition-colors hover:bg-black/5 dark:border-white/10 dark:hover:bg-white/10"
+          >
+            {showAll ? (
+              <>
+                <ChevronUp className="size-4" aria-hidden="true" />
+                Show fewer civilisations
+              </>
+            ) : (
+              <>
+                <ChevronDown className="size-4" aria-hidden="true" />
+                Show all {analytics.civilisations.length.toLocaleString()}{" "}
+                civilisations
+              </>
+            )}
+          </button>
+        </div>
+      )}
 
       <p className="text-xs text-black/45 dark:text-white/45">
         Best and lowest win-rate highlights require at least three games with a
