@@ -89,3 +89,53 @@ model HomepageLeaderboardSnapshot {
 
   @@index([generatedAt])
 }
+
+model PlayerHistoryCache {
+  id String @id @default(cuid())
+
+  profileId   Int
+  leaderboard String
+  historyDays Int
+
+  refreshedAt DateTime
+  expiresAt   DateTime
+
+  newestGameAt DateTime?
+  oldestGameAt DateTime?
+
+  gameCount Int @default(0)
+
+  dataVersion String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  games CachedPlayerGame[]
+
+  @@unique([profileId, leaderboard, historyDays])
+  @@index([expiresAt])
+  @@index([refreshedAt])
+  @@index([profileId, leaderboard])
+}
+
+model CachedPlayerGame {
+  id String @id @default(cuid())
+
+  cacheId String
+  gameId  String
+
+  profileId   Int
+  leaderboard String
+  startedAt   DateTime
+
+  data Json
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  cache PlayerHistoryCache @relation(fields: [cacheId], references: [id], onDelete: Cascade)
+
+  @@unique([cacheId, gameId])
+  @@index([cacheId, startedAt])
+  @@index([profileId, leaderboard, startedAt])
+}
