@@ -6,7 +6,9 @@ import type { HistoryLeaderboard } from "@/types/history";
 import {
   PLAYER_HISTORY_CACHE_TTL_MS,
   PLAYER_HISTORY_CACHE_VERSION,
+  PLAYER_HISTORY_REFRESH_LEASE_MS,
   PLAYER_HISTORY_RETENTION_DAYS,
+  PLAYER_HISTORY_UNUSED_CACHE_DAYS,
 } from "./history-cache-constants";
 import type {
   CachedHistoryGames,
@@ -243,6 +245,7 @@ export async function writeCachedPlayerGames(
           newestGameAt,
           refreshedAt: now,
           expiresAt,
+          refreshLeaseUntil: null,
           dataVersion: PLAYER_HISTORY_CACHE_VERSION,
         },
       });
@@ -377,6 +380,7 @@ export async function mergeCachedPlayerGames(
           oldestGameAt: aggregate._min.startedAt,
           newestGameAt: aggregate._max.startedAt,
           gameCount: aggregate._count._all,
+          refreshLeaseUntil: null,
           dataVersion: PLAYER_HISTORY_CACHE_VERSION,
         },
       });
@@ -435,6 +439,161 @@ export async function deletePlayerHistoryCache(
       historyDays: normalised.historyDays,
     },
   });
+}
+
+export async function acquirePlayerHistoryRefreshLease(
+  key: HistoryCacheKey,
+): Promise<boolean> {
+  const normalised = normaliseKey(key);
+
+  const now = new Date();
+
+  const refreshLeaseUntil = new Date(
+    now.getTime() + PLAYER_HISTORY_REFRESH_LEASE_MS,
+  );
+
+  const existingLease = await prisma.playerHistoryCache.updateMany({
+    where: {
+      profileId: normalised.profileId,
+      leaderboard: normalised.leaderboard,
+      historyDays: normalised.historyDays,
+
+      OR: [
+        {
+          refreshLeaseUntil: null,
+        },
+        {
+          refreshLeaseUntil: {
+            lt: now,
+          },
+        },
+      ],
+    },
+
+    data: {
+      refreshLeaseUntil,
+    },
+  });
+
+  if (existingLease.count === 1) {
+    return true;
+  }
+
+  const existingCache = await prisma.playerHistoryCache.findUnique({
+    where: {
+      profileId_leaderboard_historyDays: {
+        profileId: normalised.profileId,
+        leaderboard: normalised.leaderboard,
+        historyDays: normalised.historyDays,
+      },
+    },
+
+    select: {
+      id: true,
+    },
+  });
+
+  if (existingCache) {
+    return false;
+  }
+
+  /*
+   * Create a placeholder cache row for a first-time
+   * bootstrap. If another request creates it first, this
+   * request treats the refresh lease as unavailable.
+   */
+  try {
+    await prisma.playerHistoryCache.create({
+      data: {
+        profileId: normalised.profileId,
+        leaderboard: normalised.leaderboard,
+        historyDays: normalised.historyDays,
+
+        refreshedAt: new Date(0),
+        expiresAt: new Date(0),
+
+        refreshLeaseUntil,
+
+        newestGameAt: null,
+        oldestGameAt: null,
+        gameCount: 0,
+
+        dataVersion: PLAYER_HISTORY_CACHE_VERSION,
+      },
+    });
+
+    return true;
+  } catch {
+    const cacheCreatedByAnotherRequest =
+      await prisma.playerHistoryCache.findUnique({
+        where: {
+          profileId_leaderboard_historyDays: {
+            profileId: normalised.profileId,
+            leaderboard: normalised.leaderboard,
+            historyDays: normalised.historyDays,
+          },
+        },
+
+        select: {
+          id: true,
+        },
+      });
+
+    if (cacheCreatedByAnotherRequest) {
+      return false;
+    }
+
+    throw new Error("Unable to acquire player-history refresh lease.");
+  }
+}
+
+export async function releasePlayerHistoryRefreshLease(
+  key: HistoryCacheKey,
+): Promise<void> {
+  const normalised = normaliseKey(key);
+
+  await prisma.playerHistoryCache.updateMany({
+    where: {
+      profileId: normalised.profileId,
+      leaderboard: normalised.leaderboard,
+      historyDays: normalised.historyDays,
+    },
+
+    data: {
+      refreshLeaseUntil: null,
+    },
+  });
+}
+
+export async function deleteUnusedPlayerHistoryCaches(): Promise<{
+  deletedCaches: number;
+}> {
+  const cutoff = new Date();
+
+  cutoff.setUTCDate(cutoff.getUTCDate() - PLAYER_HISTORY_UNUSED_CACHE_DAYS);
+
+  const result = await prisma.playerHistoryCache.deleteMany({
+    where: {
+      refreshedAt: {
+        lt: cutoff,
+      },
+
+      OR: [
+        {
+          refreshLeaseUntil: null,
+        },
+        {
+          refreshLeaseUntil: {
+            lt: new Date(),
+          },
+        },
+      ],
+    },
+  });
+
+  return {
+    deletedCaches: result.count,
+  };
 }
 
 export function createHistoryCacheKey(

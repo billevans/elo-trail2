@@ -4,6 +4,7 @@ import { Aoe4WorldRequestError } from "@/services/aoe4world/client";
 import { getPlayerGames } from "@/services/aoe4world/history";
 import { buildEloHistory } from "@/services/aoe4world/timeline";
 import {
+  acquirePlayerHistoryRefreshLease,
   createHistoryCacheKey,
   decideHistoryLoad,
   getIncrementalRefreshSince,
@@ -11,6 +12,7 @@ import {
   mergeHistoryGames,
   PLAYER_HISTORY_REFRESH_OVERLAP_MS,
   readCachedPlayerGames,
+  releasePlayerHistoryRefreshLease,
   writeCachedPlayerGames,
 } from "@/services/database";
 import type { ApiFailure, ApiSuccess } from "@/types/api";
@@ -29,6 +31,8 @@ const RESPONSE_DATA_VERSION = "persistent-history-cache-v2";
 
 type HistoryResponseSource =
   | "database-fresh"
+  | "database-stale-fallback"
+  | "database-stale-refresh-in-progress"
   | "aoe4world-cache-miss"
   | "aoe4world-full-refresh"
   | "aoe4world-incremental-refresh"
@@ -47,6 +51,8 @@ interface SuccessResponseOptions {
   upstreamGames?: number | null;
   cacheAgeSeconds?: number | null;
   cacheRefreshedAt?: Date | null;
+  stale?: boolean;
+  refreshInProgress?: boolean;
 }
 
 function parsePositiveInteger(
@@ -90,11 +96,6 @@ function failure(
 function getSinceDate(days: number): string {
   const date = new Date();
 
-  /*
-   * Normalise to UTC midnight before subtracting the
-   * requested number of days. This keeps the generated
-   * `since` value stable throughout the day.
-   */
   date.setUTCHours(0, 0, 0, 0);
   date.setUTCDate(date.getUTCDate() - days);
 
@@ -110,13 +111,9 @@ function createSuccessResponse(
   options: SuccessResponseOptions,
 ): NextResponse<ApiSuccess<EloHistory>> {
   const headers = new Headers({
-    /*
-     * Vercel may serve the response for 15 minutes and
-     * revalidate it during the following 15 minutes.
-     * The PostgreSQL cache remains the shared source used
-     * whenever the route itself executes.
-     */
-    "Cache-Control": "public, s-maxage=900, stale-while-revalidate=900",
+    "Cache-Control": options.stale
+      ? "private, no-store"
+      : "public, s-maxage=900, stale-while-revalidate=900",
 
     "X-Elo-Trail-Data-Version": RESPONSE_DATA_VERSION,
 
@@ -150,6 +147,14 @@ function createSuccessResponse(
       "X-Elo-Trail-Database-Cache-Refreshed",
       options.cacheRefreshedAt.toISOString(),
     );
+  }
+
+  if (options.stale) {
+    headers.set("X-Elo-Trail-Stale-Fallback", "true");
+  }
+
+  if (options.refreshInProgress) {
+    headers.set("X-Elo-Trail-Refresh-In-Progress", "true");
   }
 
   return NextResponse.json<ApiSuccess<EloHistory>>(
@@ -190,10 +195,6 @@ export async function GET(request: Request, context: RouteContext) {
     );
   }
 
-  /*
-   * ELO Trail exclusively tracks ranked 1v1
-   * matchmaking ELO—not seasonal ranked points.
-   */
   const leaderboard: HistoryLeaderboard = "rm_1v1";
 
   const since = getSinceDate(days);
@@ -205,11 +206,6 @@ export async function GET(request: Request, context: RouteContext) {
 
   let cacheReadFailed = false;
 
-  /*
-   * Cache access must fail open. A temporary database
-   * problem must not stop ELO Trail from loading history
-   * directly from AoE4World.
-   */
   try {
     cachedResult = await readCachedPlayerGames(cacheKey);
   } catch (error) {
@@ -238,6 +234,67 @@ export async function GET(request: Request, context: RouteContext) {
       cacheAgeSeconds: getCacheAgeSeconds(cachedResult.metadata.refreshedAt),
       cacheRefreshedAt: cachedResult.metadata.refreshedAt,
     });
+  }
+
+  let refreshLeaseAcquired = false;
+
+  try {
+    refreshLeaseAcquired = await acquirePlayerHistoryRefreshLease(cacheKey);
+  } catch (error) {
+    console.error("Player-history refresh lease acquisition failed", {
+      playerId,
+      leaderboard,
+      days,
+      error,
+    });
+  }
+
+  /*
+   * When the database itself cannot be read, continue
+   * directly to AoE4World without a database lease.
+   *
+   * When the cache is available but another request owns
+   * the lease, serve the existing stale history.
+   */
+  if (!refreshLeaseAcquired && !cacheReadFailed) {
+    if (
+      cachedResult &&
+      cachedResult.games.length > 0 &&
+      cachedResult.metadata
+    ) {
+      const history = buildEloHistory(
+        playerId,
+        cachedResult.games,
+        leaderboard,
+      );
+
+      return createSuccessResponse(history, {
+        source: "database-stale-refresh-in-progress",
+        historyDays: days,
+        games: cachedResult.games.length,
+        cacheAgeSeconds: getCacheAgeSeconds(cachedResult.metadata.refreshedAt),
+        cacheRefreshedAt: cachedResult.metadata.refreshedAt,
+        stale: true,
+        refreshInProgress: true,
+      });
+    }
+
+    return NextResponse.json<ApiFailure>(
+      {
+        error: {
+          code: "HISTORY_REFRESH_IN_PROGRESS",
+          message:
+            "Player history is currently being refreshed. Please retry shortly.",
+        },
+      },
+      {
+        status: 503,
+        headers: {
+          "Cache-Control": "no-store",
+          "Retry-After": "2",
+        },
+      },
+    );
   }
 
   try {
@@ -270,11 +327,6 @@ export async function GET(request: Request, context: RouteContext) {
 
     let cacheRefreshedAt: Date | null = null;
 
-    /*
-     * Database persistence remains an optimisation.
-     * If the write fails, the valid history response is
-     * still returned to the user.
-     */
     try {
       const metadata = canRefreshIncrementally
         ? await mergeCachedPlayerGames(cacheKey, upstreamGames)
@@ -309,6 +361,40 @@ export async function GET(request: Request, context: RouteContext) {
       cacheRefreshedAt,
     });
   } catch (error) {
+    /*
+     * Existing cached history is preferable to an error
+     * when AoE4World is temporarily unavailable or rate
+     * limiting requests.
+     */
+    if (
+      cachedResult &&
+      cachedResult.games.length > 0 &&
+      cachedResult.metadata
+    ) {
+      console.warn("Serving stale player history after upstream failure", {
+        playerId,
+        leaderboard,
+        days,
+        cacheRefreshedAt: cachedResult.metadata.refreshedAt,
+        error,
+      });
+
+      const history = buildEloHistory(
+        playerId,
+        cachedResult.games,
+        leaderboard,
+      );
+
+      return createSuccessResponse(history, {
+        source: "database-stale-fallback",
+        historyDays: days,
+        games: cachedResult.games.length,
+        cacheAgeSeconds: getCacheAgeSeconds(cachedResult.metadata.refreshedAt),
+        cacheRefreshedAt: cachedResult.metadata.refreshedAt,
+        stale: true,
+      });
+    }
+
     if (error instanceof Aoe4WorldRequestError && error.status === 429) {
       return NextResponse.json<ApiFailure>(
         {
@@ -340,5 +426,18 @@ export async function GET(request: Request, context: RouteContext) {
       "HISTORY_UPSTREAM_ERROR",
       "Matchmaking ELO history is temporarily unavailable.",
     );
+  } finally {
+    if (refreshLeaseAcquired) {
+      try {
+        await releasePlayerHistoryRefreshLease(cacheKey);
+      } catch (releaseError) {
+        console.error("Player-history refresh lease release failed", {
+          playerId,
+          leaderboard,
+          days,
+          releaseError,
+        });
+      }
+    }
   }
 }

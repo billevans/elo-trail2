@@ -100,6 +100,8 @@ model PlayerHistoryCache {
   refreshedAt DateTime
   expiresAt   DateTime
 
+  refreshLeaseUntil DateTime?
+
   newestGameAt DateTime?
   oldestGameAt DateTime?
 
@@ -116,6 +118,7 @@ model PlayerHistoryCache {
   @@index([expiresAt])
   @@index([refreshedAt])
   @@index([profileId, leaderboard])
+  @@index([refreshLeaseUntil])
 }
 
 model CachedPlayerGame {
