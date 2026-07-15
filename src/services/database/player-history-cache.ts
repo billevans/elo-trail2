@@ -46,7 +46,14 @@ function toMetadata(record: {
   };
 }
 
-function getCacheState(expiresAt: Date): "fresh" | "stale" {
+function getCacheState(
+  expiresAt: Date,
+  dataVersion: string,
+): "fresh" | "stale" {
+  if (dataVersion !== PLAYER_HISTORY_CACHE_VERSION) {
+    return "stale";
+  }
+
   return expiresAt.getTime() > Date.now() ? "fresh" : "stale";
 }
 
@@ -108,7 +115,7 @@ export async function readCachedPlayerGames(
   }, []);
 
   return {
-    state: getCacheState(cache.expiresAt),
+    state: getCacheState(cache.expiresAt, cache.dataVersion),
     metadata: toMetadata(cache),
     games,
   };
@@ -154,92 +161,103 @@ export async function writeCachedPlayerGames(
 
   const newestGameAt = orderedGames.at(-1)?.startedAt ?? null;
 
-  const cache = await prisma.$transaction(async (transaction) => {
-    const record = await transaction.playerHistoryCache.upsert({
-      where: {
-        profileId_leaderboard_historyDays: {
+  const cache = await prisma.$transaction(
+    async (transaction) => {
+      const record = await transaction.playerHistoryCache.upsert({
+        where: {
+          profileId_leaderboard_historyDays: {
+            profileId: normalised.profileId,
+            leaderboard: normalised.leaderboard,
+            historyDays: normalised.historyDays,
+          },
+        },
+
+        create: {
           profileId: normalised.profileId,
           leaderboard: normalised.leaderboard,
           historyDays: normalised.historyDays,
+          refreshedAt: now,
+          expiresAt,
+          newestGameAt,
+          oldestGameAt,
+          gameCount: 0,
+          dataVersion: PLAYER_HISTORY_CACHE_VERSION,
         },
-      },
 
-      create: {
-        profileId: normalised.profileId,
-        leaderboard: normalised.leaderboard,
-        historyDays: normalised.historyDays,
-        refreshedAt: now,
-        expiresAt,
-        newestGameAt,
-        oldestGameAt,
-        gameCount: orderedGames.length,
-        dataVersion: PLAYER_HISTORY_CACHE_VERSION,
-      },
-
-      update: {
-        refreshedAt: now,
-        expiresAt,
-        newestGameAt,
-        oldestGameAt,
-        gameCount: orderedGames.length,
-        dataVersion: PLAYER_HISTORY_CACHE_VERSION,
-      },
-    });
-
-    if (orderedGames.length > 0) {
-      await Promise.all(
-        orderedGames.map((entry) =>
-          transaction.cachedPlayerGame.upsert({
-            where: {
-              cacheId_gameId: {
-                cacheId: record.id,
-                gameId: entry.gameId,
-              },
-            },
-
-            create: {
-              cacheId: record.id,
-              gameId: entry.gameId,
-              profileId: normalised.profileId,
-              leaderboard: normalised.leaderboard,
-              startedAt: entry.startedAt,
-              data: entry.game as unknown as Prisma.InputJsonValue,
-            },
-
-            update: {
-              startedAt: entry.startedAt,
-              data: entry.game as unknown as Prisma.InputJsonValue,
-            },
-          }),
-        ),
-      );
-    }
-
-    await transaction.cachedPlayerGame.deleteMany({
-      where: {
-        cacheId: record.id,
-        startedAt: {
-          lt: retentionStart,
+        update: {
+          refreshedAt: now,
+          expiresAt,
+          newestGameAt,
+          oldestGameAt,
+          gameCount: 0,
+          dataVersion: PLAYER_HISTORY_CACHE_VERSION,
         },
-      },
-    });
+      });
 
-    const actualGameCount = await transaction.cachedPlayerGame.count({
-      where: {
-        cacheId: record.id,
-      },
-    });
+      /*
+       * Batch 8B performs a full refresh whenever the
+       * persistent cache is missing or stale. Replacing
+       * the existing rows is substantially faster than
+       * issuing one upsert query for every game.
+       */
+      await transaction.cachedPlayerGame.deleteMany({
+        where: {
+          cacheId: record.id,
+        },
+      });
 
-    return transaction.playerHistoryCache.update({
-      where: {
-        id: record.id,
-      },
+      if (orderedGames.length > 0) {
+        await transaction.cachedPlayerGame.createMany({
+          data: orderedGames.map((entry) => ({
+            cacheId: record.id,
+            gameId: entry.gameId,
+            profileId: normalised.profileId,
+            leaderboard: normalised.leaderboard,
+            startedAt: entry.startedAt,
+            data: entry.game as unknown as Prisma.InputJsonValue,
+          })),
 
-      data: {
-        gameCount: actualGameCount,
-      },
-    });
-  });
+          /*
+           * getPlayerGames already deduplicates games, but
+           * this safely ignores any remaining duplicate
+           * cacheId/gameId combinations.
+           */
+          skipDuplicates: true,
+        });
+      }
+
+      const actualGameCount = await transaction.cachedPlayerGame.count({
+        where: {
+          cacheId: record.id,
+        },
+      });
+
+      return transaction.playerHistoryCache.update({
+        where: {
+          id: record.id,
+        },
+
+        data: {
+          gameCount: actualGameCount,
+          oldestGameAt,
+          newestGameAt,
+          refreshedAt: now,
+          expiresAt,
+          dataVersion: PLAYER_HISTORY_CACHE_VERSION,
+        },
+      });
+    },
+    {
+      /*
+       * Prisma defaults interactive transactions to five
+       * seconds. The bulk strategy should finish well below
+       * this, while 15 seconds provides a safe allowance for
+       * a cold Supabase connection.
+       */
+      maxWait: 5_000,
+      timeout: 15_000,
+    },
+  );
 
   return toMetadata(cache);
 }
@@ -271,7 +289,8 @@ export async function touchPlayerHistoryCache(
     });
 
     return toMetadata(cache);
-  } catch {
+  } catch (error) {
+    console.error("TOUCH CACHE FAILED", error);
     return null;
   }
 }
