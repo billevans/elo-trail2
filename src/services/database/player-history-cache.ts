@@ -262,6 +262,134 @@ export async function writeCachedPlayerGames(
   return toMetadata(cache);
 }
 
+export async function mergeCachedPlayerGames(
+  key: HistoryCacheKey,
+  refreshedGames: Aoe4WorldGame[],
+): Promise<HistoryCacheMetadata> {
+  const normalised = normaliseKey(key);
+
+  const now = new Date();
+
+  const expiresAt = new Date(now.getTime() + PLAYER_HISTORY_CACHE_TTL_MS);
+
+  const retentionStart = new Date(now);
+
+  retentionStart.setUTCDate(
+    retentionStart.getUTCDate() - PLAYER_HISTORY_RETENTION_DAYS,
+  );
+
+  const validGames = refreshedGames
+    .map((game) => ({
+      game,
+      gameId: getCachedGameId(game),
+      startedAt: getCachedGameStartedAt(game),
+    }))
+    .filter(
+      (
+        entry,
+      ): entry is {
+        game: Aoe4WorldGame;
+        gameId: string;
+        startedAt: Date;
+      } => entry.startedAt !== null && entry.startedAt >= retentionStart,
+    );
+
+  const cache = await prisma.$transaction(
+    async (transaction) => {
+      const record = await transaction.playerHistoryCache.findUnique({
+        where: {
+          profileId_leaderboard_historyDays: {
+            profileId: normalised.profileId,
+            leaderboard: normalised.leaderboard,
+            historyDays: normalised.historyDays,
+          },
+        },
+      });
+
+      if (!record) {
+        throw new Error(
+          "Cannot incrementally refresh a missing player history cache.",
+        );
+      }
+
+      const refreshedGameIds = validGames.map((entry) => entry.gameId);
+
+      /*
+       * Delete overlapping rows before inserting the
+       * refreshed representation. AoE4World game data
+       * can occasionally gain additional fields after
+       * the initial result is observed.
+       */
+      if (refreshedGameIds.length > 0) {
+        await transaction.cachedPlayerGame.deleteMany({
+          where: {
+            cacheId: record.id,
+            gameId: {
+              in: refreshedGameIds,
+            },
+          },
+        });
+
+        await transaction.cachedPlayerGame.createMany({
+          data: validGames.map((entry) => ({
+            cacheId: record.id,
+            gameId: entry.gameId,
+            profileId: normalised.profileId,
+            leaderboard: normalised.leaderboard,
+            startedAt: entry.startedAt,
+            data: entry.game as unknown as Prisma.InputJsonValue,
+          })),
+          skipDuplicates: true,
+        });
+      }
+
+      await transaction.cachedPlayerGame.deleteMany({
+        where: {
+          cacheId: record.id,
+          startedAt: {
+            lt: retentionStart,
+          },
+        },
+      });
+
+      const aggregate = await transaction.cachedPlayerGame.aggregate({
+        where: {
+          cacheId: record.id,
+        },
+        _count: {
+          _all: true,
+        },
+        _min: {
+          startedAt: true,
+        },
+        _max: {
+          startedAt: true,
+        },
+      });
+
+      return transaction.playerHistoryCache.update({
+        where: {
+          id: record.id,
+        },
+        data: {
+          refreshedAt: now,
+          expiresAt,
+          oldestGameAt: aggregate._min.startedAt,
+          newestGameAt: aggregate._max.startedAt,
+          gameCount: aggregate._count._all,
+          dataVersion: PLAYER_HISTORY_CACHE_VERSION,
+        },
+      });
+    },
+    {
+      maxWait: 5_000,
+      timeout: 15_000,
+    },
+  );
+
+  return toMetadata(cache);
+}
+
 export async function touchPlayerHistoryCache(
   key: HistoryCacheKey,
 ): Promise<HistoryCacheMetadata | null> {
