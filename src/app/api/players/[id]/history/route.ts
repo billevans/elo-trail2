@@ -5,6 +5,11 @@ import { getPlayerGames } from "@/services/aoe4world/history";
 import { buildEloHistory } from "@/services/aoe4world/timeline";
 import {
   createHistoryCacheKey,
+  decideHistoryLoad,
+  getIncrementalRefreshSince,
+  mergeCachedPlayerGames,
+  mergeHistoryGames,
+  PLAYER_HISTORY_REFRESH_OVERLAP_MS,
   readCachedPlayerGames,
   writeCachedPlayerGames,
 } from "@/services/database";
@@ -20,18 +25,28 @@ const MAX_HISTORY_DAYS = 180;
  */
 const MAX_HISTORY_PAGES = 40;
 
-const RESPONSE_DATA_VERSION = "persistent-history-cache-v1";
+const RESPONSE_DATA_VERSION = "persistent-history-cache-v2";
 
 type HistoryResponseSource =
   | "database-fresh"
   | "aoe4world-cache-miss"
-  | "aoe4world-cache-stale"
+  | "aoe4world-full-refresh"
+  | "aoe4world-incremental-refresh"
   | "aoe4world-cache-unavailable";
 
 interface RouteContext {
   params: Promise<{
     id: string;
   }>;
+}
+
+interface SuccessResponseOptions {
+  source: HistoryResponseSource;
+  historyDays: number;
+  games: number;
+  upstreamGames?: number | null;
+  cacheAgeSeconds?: number | null;
+  cacheRefreshedAt?: Date | null;
 }
 
 function parsePositiveInteger(
@@ -86,15 +101,13 @@ function getSinceDate(days: number): string {
   return date.toISOString();
 }
 
+function getCacheAgeSeconds(refreshedAt: Date): number {
+  return (Date.now() - refreshedAt.getTime()) / 1000;
+}
+
 function createSuccessResponse(
   history: EloHistory,
-  options: {
-    source: HistoryResponseSource;
-    historyDays: number;
-    games: number;
-    cacheAgeSeconds?: number | null;
-    cacheRefreshedAt?: Date | null;
-  },
+  options: SuccessResponseOptions,
 ): NextResponse<ApiSuccess<EloHistory>> {
   const headers = new Headers({
     /*
@@ -117,6 +130,10 @@ function createSuccessResponse(
 
     "X-Elo-Trail-History-Source": options.source,
   });
+
+  if (options.upstreamGames !== undefined && options.upstreamGames !== null) {
+    headers.set("X-Elo-Trail-Upstream-Games", String(options.upstreamGames));
+  }
 
   if (
     options.cacheAgeSeconds !== undefined &&
@@ -143,10 +160,6 @@ function createSuccessResponse(
       headers,
     },
   );
-}
-
-function getCacheAgeSeconds(refreshedAt: Date): number {
-  return (Date.now() - refreshedAt.getTime()) / 1000;
 }
 
 export async function GET(request: Request, context: RouteContext) {
@@ -210,7 +223,12 @@ export async function GET(request: Request, context: RouteContext) {
     });
   }
 
-  if (cachedResult?.state === "fresh" && cachedResult.metadata) {
+  const loadDecision = decideHistoryLoad(
+    cachedResult?.state ?? null,
+    cachedResult?.metadata ?? null,
+  );
+
+  if (loadDecision === "serve-cache" && cachedResult?.metadata) {
     const history = buildEloHistory(playerId, cachedResult.games, leaderboard);
 
     return createSuccessResponse(history, {
@@ -223,45 +241,70 @@ export async function GET(request: Request, context: RouteContext) {
   }
 
   try {
-    const games = await getPlayerGames(playerId, {
+    const newestGameAt = cachedResult?.metadata?.newestGameAt;
+
+    const canRefreshIncrementally =
+      loadDecision === "incremental-refresh" &&
+      newestGameAt !== null &&
+      newestGameAt !== undefined;
+
+    const upstreamSince = canRefreshIncrementally
+      ? getIncrementalRefreshSince(
+          newestGameAt,
+          PLAYER_HISTORY_REFRESH_OVERLAP_MS,
+        )
+      : since;
+
+    const upstreamGames = await getPlayerGames(playerId, {
       leaderboard,
-      since,
+      since: upstreamSince,
       pageSize: 50,
       maxPages: MAX_HISTORY_PAGES,
     });
 
-    const history = buildEloHistory(playerId, games, leaderboard);
+    const combinedGames = canRefreshIncrementally
+      ? mergeHistoryGames(cachedResult?.games ?? [], upstreamGames)
+      : upstreamGames;
+
+    const history = buildEloHistory(playerId, combinedGames, leaderboard);
 
     let cacheRefreshedAt: Date | null = null;
 
     /*
-     * Writing to PostgreSQL is an optimisation. The
-     * requested history remains valid even if persistence
-     * fails, so cache writes also fail open.
+     * Database persistence remains an optimisation.
+     * If the write fails, the valid history response is
+     * still returned to the user.
      */
     try {
-      const metadata = await writeCachedPlayerGames(cacheKey, games);
+      const metadata = canRefreshIncrementally
+        ? await mergeCachedPlayerGames(cacheKey, upstreamGames)
+        : await writeCachedPlayerGames(cacheKey, upstreamGames);
+
       cacheRefreshedAt = metadata.refreshedAt;
     } catch (error) {
       console.error("Persistent player history cache write failed", {
         playerId,
         leaderboard,
         days,
-        games: games.length,
+        loadDecision,
+        upstreamGames: upstreamGames.length,
         error,
       });
     }
 
     const source: HistoryResponseSource = cacheReadFailed
       ? "aoe4world-cache-unavailable"
-      : cachedResult?.state === "stale"
-        ? "aoe4world-cache-stale"
-        : "aoe4world-cache-miss";
+      : canRefreshIncrementally
+        ? "aoe4world-incremental-refresh"
+        : loadDecision === "full-refresh"
+          ? "aoe4world-full-refresh"
+          : "aoe4world-cache-miss";
 
     return createSuccessResponse(history, {
       source,
       historyDays: days,
-      games: games.length,
+      games: combinedGames.length,
+      upstreamGames: upstreamGames.length,
       cacheAgeSeconds: cacheRefreshedAt ? 0 : null,
       cacheRefreshedAt,
     });
@@ -288,6 +331,7 @@ export async function GET(request: Request, context: RouteContext) {
       playerId,
       leaderboard,
       since,
+      loadDecision,
       error,
     });
 

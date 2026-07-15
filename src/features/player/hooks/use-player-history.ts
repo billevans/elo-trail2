@@ -8,7 +8,7 @@ export interface UsePlayerHistoryOptions {
   enabled?: boolean;
 }
 
-const HISTORY_DATA_VERSION = "persistent-history-cache-v1";
+const HISTORY_DATA_VERSION = "persistent-history-cache-v2";
 
 const HISTORY_STALE_TIME_MS = 15 * 60 * 1000;
 

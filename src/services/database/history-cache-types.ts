@@ -33,3 +33,9 @@ export interface CachedEloHistory {
   metadata: HistoryCacheMetadata | null;
   history: EloHistory | null;
 }
+
+export interface HistoryCacheBoundary {
+  newestGameId: string | null;
+  newestStartedAt: Date | null;
+  cachedGameCount: number;
+}
