@@ -1,4 +1,12 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
+
+import {
+  getHistoryErrorCode,
+  getHistoryOperationalEventName,
+  parseMetricHeader,
+  recordOperationalEvent,
+  startOperationTimer,
+} from "@/services/observability";
 
 import { Aoe4WorldRequestError } from "@/services/aoe4world/client";
 import { getPlayerGames } from "@/services/aoe4world/history";
@@ -167,7 +175,10 @@ function createSuccessResponse(
   );
 }
 
-export async function GET(request: Request, context: RouteContext) {
+export async function handleHistoryRequest(
+  request: Request,
+  context: RouteContext,
+) {
   const { id } = await context.params;
 
   const playerId = parsePositiveInteger(id, 0);
@@ -439,5 +450,95 @@ export async function GET(request: Request, context: RouteContext) {
         });
       }
     }
+  }
+}
+
+export async function GET(request: Request, context: RouteContext) {
+  const finishTiming = startOperationTimer();
+
+  const { id } = await context.params;
+
+  const profileId = parsePositiveInteger(id, 0);
+
+  const { searchParams } = new URL(request.url);
+
+  const historyDays = parsePositiveInteger(
+    searchParams.get("days"),
+    DEFAULT_HISTORY_DAYS,
+  );
+
+  try {
+    const response = await handleHistoryRequest(request, context);
+
+    const durationMs = finishTiming();
+
+    const cacheSource = response.headers.get("X-Elo-Trail-History-Source");
+
+    const upstreamGames = parseMetricHeader(
+      response.headers.get("X-Elo-Trail-Upstream-Games"),
+    );
+
+    const returnedGames = parseMetricHeader(
+      response.headers.get("X-Elo-Trail-Games-Fetched"),
+    );
+
+    const eventName = getHistoryOperationalEventName(
+      response.status,
+      cacheSource,
+    );
+
+    /*
+     * Record one bounded event per history request.
+     * The event write runs after the response and cannot
+     * delay or break the player-history request.
+     */
+    after(async () => {
+      await recordOperationalEvent({
+        eventName,
+        route: "/api/players/[id]/history",
+        statusCode: response.status,
+        durationMs,
+        profileId: profileId && profileId > 0 ? profileId : undefined,
+        historyDays:
+          historyDays && historyDays <= MAX_HISTORY_DAYS
+            ? historyDays
+            : undefined,
+        cacheSource: cacheSource ?? undefined,
+        upstreamGames,
+        returnedGames,
+        errorCode: getHistoryErrorCode(response.status),
+      });
+    });
+
+    return response;
+  } catch (error) {
+    const durationMs = finishTiming();
+
+    console.error("Unexpected player-history route failure", {
+      profileId: profileId ?? undefined,
+      historyDays: historyDays ?? undefined,
+      error,
+    });
+
+    after(async () => {
+      await recordOperationalEvent({
+        eventName: "history.error",
+        route: "/api/players/[id]/history",
+        statusCode: 500,
+        durationMs,
+        profileId: profileId && profileId > 0 ? profileId : undefined,
+        historyDays:
+          historyDays && historyDays <= MAX_HISTORY_DAYS
+            ? historyDays
+            : undefined,
+        errorCode: "HISTORY_INTERNAL_ERROR",
+      });
+    });
+
+    return failure(
+      500,
+      "HISTORY_INTERNAL_ERROR",
+      "Player history is temporarily unavailable.",
+    );
   }
 }
