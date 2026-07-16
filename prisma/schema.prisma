@@ -142,3 +142,33 @@ model CachedPlayerGame {
   @@index([cacheId, startedAt])
   @@index([profileId, leaderboard, startedAt])
 }
+
+model OperationalEvent {
+  id String @id @default(cuid())
+
+  eventName String
+  route     String?
+
+  statusCode Int?
+  durationMs Int?
+
+  profileId   Int?
+  historyDays Int?
+
+  cacheSource   String?
+  upstreamGames Int?
+  returnedGames Int?
+
+  errorCode String?
+
+  metadata Json?
+
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([eventName, createdAt])
+  @@index([route, createdAt])
+  @@index([profileId, createdAt])
+  @@index([cacheSource, createdAt])
+  @@index([errorCode, createdAt])
+}
