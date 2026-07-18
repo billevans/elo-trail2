@@ -110,3 +110,26 @@ export interface ObservabilityDashboard {
   routes: RouteMetricsSummary[];
   recentErrors: RecentOperationalError[];
 }
+
+export type MetricTrendDirection = "up" | "down" | "flat" | "unavailable";
+
+export interface MetricTrend {
+  current: number;
+  previous: number | null;
+  changePercent: number | null;
+  direction: MetricTrendDirection;
+}
+
+export interface ObservabilityDashboardTrends {
+  totalEvents: MetricTrend;
+  errorRate: MetricTrend;
+  averageDurationMs: MetricTrend;
+  cacheHitRate: MetricTrend;
+  upstreamGames: MetricTrend;
+}
+
+export interface ObservabilityDashboardComparison {
+  current: ObservabilityDashboard;
+  previous: ObservabilityDashboard;
+  trends: ObservabilityDashboardTrends;
+}
