@@ -15,6 +15,9 @@ describe("dashboard authorization", () => {
   });
 
   it("reports whether dashboard credentials are configured", () => {
+    vi.stubEnv("OBSERVABILITY_DASHBOARD_USERNAME", "");
+    vi.stubEnv("OBSERVABILITY_DASHBOARD_PASSWORD", "");
+
     expect(hasDashboardCredentialsConfigured()).toBe(false);
 
     vi.stubEnv("OBSERVABILITY_DASHBOARD_USERNAME", "admin");
