@@ -1,12 +1,29 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 
 import { getHomepageLeaderboard } from "@/features/leaderboard/services/get-homepage-leaderboard";
 import type { HomepageLeaderboardApiResponse } from "@/features/leaderboard/types/homepage-leaderboard";
+import {
+  getLeaderboardReadEventName,
+  recordOperationalEvent,
+  startOperationTimer,
+} from "@/services/observability";
 
 export const runtime = "nodejs";
+
 export const revalidate = 3600;
 
-export async function GET() {
+interface LeaderboardResponseBody {
+  data?: {
+    players?: unknown[];
+  } | null;
+
+  error?: {
+    code: string;
+    message: string;
+  };
+}
+
+async function handleLeaderboardRead() {
   try {
     const data = await getHomepageLeaderboard();
 
@@ -39,6 +56,8 @@ export async function GET() {
             "public, s-maxage=3600, stale-while-revalidate=86400",
 
           "X-Elo-Trail-Snapshot-Generated": data.generatedAt,
+
+          "X-Elo-Trail-Leaderboard-Players": String(data.players.length),
         },
       },
     );
@@ -61,4 +80,51 @@ export async function GET() {
       },
     );
   }
+}
+
+export async function GET() {
+  const finishTiming = startOperationTimer();
+
+  const response = await handleLeaderboardRead();
+
+  const durationMs = finishTiming();
+
+  after(async () => {
+    let body: LeaderboardResponseBody | null = null;
+
+    try {
+      body = (await response.clone().json()) as LeaderboardResponseBody;
+    } catch {
+      body = null;
+    }
+
+    const headerCount = Number(
+      response.headers.get("X-Elo-Trail-Leaderboard-Players"),
+    );
+
+    const playerCount = Number.isSafeInteger(headerCount)
+      ? headerCount
+      : Array.isArray(body?.data?.players)
+        ? body.data.players.length
+        : 0;
+
+    await recordOperationalEvent({
+      eventName: getLeaderboardReadEventName(response.status),
+
+      route: "/api/homepage-leaderboard",
+
+      statusCode: response.status,
+
+      durationMs,
+
+      errorCode: body?.error?.code,
+
+      metadata: {
+        playerCount,
+        snapshotReady: response.status === 200,
+      },
+    });
+  });
+
+  return response;
 }
