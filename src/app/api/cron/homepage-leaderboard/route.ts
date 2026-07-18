@@ -1,9 +1,16 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 
 import { refreshHomepageLeaderboard } from "@/features/leaderboard/services/refresh-homepage-leaderboard";
+import {
+  getLeaderboardRefreshEventName,
+  recordOperationalEvent,
+  startOperationTimer,
+} from "@/services/observability";
 
 export const runtime = "nodejs";
+
 export const dynamic = "force-dynamic";
+
 export const maxDuration = 300;
 
 function isAuthorised(request: Request): boolean {
@@ -16,7 +23,19 @@ function isAuthorised(request: Request): boolean {
   return request.headers.get("authorization") === `Bearer ${cronSecret}`;
 }
 
-export async function GET(request: Request) {
+interface RefreshResponseBody {
+  success?: boolean;
+  generatedAt?: string;
+  players?: number;
+
+  error?: {
+    code: string;
+    message: string;
+    details?: string;
+  };
+}
+
+async function handleLeaderboardRefresh(request: Request) {
   if (!isAuthorised(request)) {
     return NextResponse.json(
       {
@@ -46,6 +65,8 @@ export async function GET(request: Request) {
       {
         headers: {
           "Cache-Control": "no-store",
+
+          "X-Elo-Trail-Leaderboard-Players": String(snapshot.players.length),
         },
       },
     );
@@ -62,7 +83,12 @@ export async function GET(request: Request) {
         error: {
           code: "LEADERBOARD_REFRESH_FAILED",
           message: "The homepage leaderboard snapshot could not be refreshed.",
-          ...(details ? { details } : {}),
+
+          ...(details
+            ? {
+                details,
+              }
+            : {}),
         },
       },
       {
@@ -73,4 +99,55 @@ export async function GET(request: Request) {
       },
     );
   }
+}
+
+export async function GET(request: Request) {
+  const finishTiming = startOperationTimer();
+
+  const response = await handleLeaderboardRefresh(request);
+
+  const durationMs = finishTiming();
+
+  after(async () => {
+    let body: RefreshResponseBody | null = null;
+
+    try {
+      body = (await response.clone().json()) as RefreshResponseBody;
+    } catch {
+      body = null;
+    }
+
+    const headerPlayerCount = Number(
+      response.headers.get("X-Elo-Trail-Leaderboard-Players"),
+    );
+
+    const playerCount =
+      Number.isSafeInteger(headerPlayerCount) && headerPlayerCount >= 0
+        ? headerPlayerCount
+        : typeof body?.players === "number"
+          ? body.players
+          : 0;
+
+    const errorCode =
+      body?.error?.code ??
+      (response.status === 401
+        ? "UNAUTHORISED"
+        : response.status >= 500
+          ? "LEADERBOARD_REFRESH_FAILED"
+          : undefined);
+
+    await recordOperationalEvent({
+      eventName: getLeaderboardRefreshEventName(response.status),
+      route: "/api/cron/homepage-leaderboard",
+      statusCode: response.status,
+      durationMs,
+      errorCode,
+      metadata: {
+        authorised: response.status !== 401,
+        playerCount,
+      },
+    });
+  });
+
+  return response;
 }

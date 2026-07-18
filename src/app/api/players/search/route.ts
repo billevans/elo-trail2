@@ -1,10 +1,23 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 
 import { Aoe4WorldRequestError } from "@/services/aoe4world/client";
 import { searchPlayers } from "@/services/aoe4world/players";
+import {
+  getSearchEventName,
+  recordOperationalEvent,
+  startOperationTimer,
+} from "@/services/observability";
 
 const MIN_SEARCH_LENGTH = 3;
 const MAX_SEARCH_LENGTH = 50;
+
+interface SearchResponseBody {
+  players?: unknown[];
+  error?: {
+    code: string;
+    message: string;
+  };
+}
 
 function errorResponse(
   status: number,
@@ -35,7 +48,7 @@ function errorResponse(
   );
 }
 
-export async function GET(request: Request) {
+async function handleSearchRequest(request: Request) {
   const { searchParams } = new URL(request.url);
 
   const query = (searchParams.get("q") ?? "").trim();
@@ -79,28 +92,95 @@ export async function GET(request: Request) {
       {
         headers: {
           "Cache-Control": "public, s-maxage=300, stale-while-revalidate=600",
+
           "X-Elo-Trail-Cache": "player-search-v1",
+
+          "X-Elo-Trail-Search-Results": String(players.length),
         },
       },
     );
   } catch (error) {
     if (error instanceof Aoe4WorldRequestError && error.status === 429) {
-      return NextResponse.json(
-        {
-          error: {
-            code: "RATE_LIMITED",
-            message: "AoE4World is temporarily rate limiting requests.",
-          },
-        },
-        {
-          status: 429,
-          headers: {
-            "Retry-After": error.retryAfter ?? "60",
-          },
-        },
+      return errorResponse(
+        429,
+        "RATE_LIMITED",
+        "AoE4World is temporarily rate limiting requests.",
+        error.retryAfter ?? "60",
       );
     }
 
-    throw error;
+    console.error("Player search failed", {
+      queryLength: query.length,
+      error,
+    });
+
+    return errorResponse(
+      502,
+      "SEARCH_UPSTREAM_ERROR",
+      "Player search is temporarily unavailable.",
+    );
   }
+}
+
+export async function GET(request: Request) {
+  const finishTiming = startOperationTimer();
+
+  const { searchParams } = new URL(request.url);
+
+  /*
+   * Store only query length—not the search text.
+   */
+  const queryLength = (searchParams.get("q") ?? "").trim().length;
+
+  const response = await handleSearchRequest(request);
+
+  const durationMs = finishTiming();
+
+  after(async () => {
+    let body: SearchResponseBody | null = null;
+
+    try {
+      body = (await response.clone().json()) as SearchResponseBody;
+    } catch {
+      body = null;
+    }
+
+    const returnedPlayers = Number(
+      response.headers.get("X-Elo-Trail-Search-Results"),
+    );
+    const resultCount =
+      Number.isSafeInteger(returnedPlayers) && returnedPlayers >= 0
+        ? returnedPlayers
+        : Array.isArray(body?.players)
+          ? body.players.length
+          : 0;
+
+    const errorCode =
+      body?.error?.code ??
+      (response.status === 400
+        ? queryLength < MIN_SEARCH_LENGTH
+          ? "SEARCH_TOO_SHORT"
+          : queryLength > MAX_SEARCH_LENGTH
+            ? "SEARCH_TOO_LONG"
+            : "INVALID_SEARCH"
+        : response.status === 429
+          ? "RATE_LIMITED"
+          : response.status >= 500
+            ? "SEARCH_UPSTREAM_ERROR"
+            : undefined);
+
+    await recordOperationalEvent({
+      eventName: getSearchEventName(response.status),
+      route: "/api/players/search",
+      statusCode: response.status,
+      durationMs,
+      errorCode,
+      metadata: {
+        queryLength,
+        resultCount,
+      },
+    });
+  });
+
+  return response;
 }
