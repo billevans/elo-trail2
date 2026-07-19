@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { headers } from "next/headers";
-import { notFound } from "next/navigation";
+import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
+import { AdminSessionRefresh } from "./admin-session-refresh";
+
 import {
   Activity,
   AlertTriangle,
@@ -18,12 +20,16 @@ import {
 
 import {
   getObservabilityDashboardComparison,
-  isDashboardAuthorised,
   normaliseObservabilityWindow,
   type MetricTrend,
   type ObservabilityDashboard,
   type ObservabilityWindow,
 } from "@/services/observability/dashboard";
+
+import {
+  ADMIN_SESSION_COOKIE,
+  verifyAdminSessionToken,
+} from "@/services/observability/dashboard/admin-session";
 
 import styles from "./observability-dashboard.module.css";
 
@@ -299,10 +305,13 @@ function ActivityPanel({ dashboard }: { dashboard: ObservabilityDashboard }) {
 export default async function ObservabilityPage({
   searchParams,
 }: ObservabilityPageProps) {
-  const requestHeaders = await headers();
+  const cookieStore = await cookies();
 
-  if (!isDashboardAuthorised(requestHeaders.get("authorization"))) {
-    notFound();
+  const token = cookieStore.get(ADMIN_SESSION_COOKIE)?.value;
+  const session = verifyAdminSessionToken(token);
+
+  if (!session) {
+    redirect("/admin/login?next=%2Fadmin%2Fobservability");
   }
 
   const resolvedSearchParams = await searchParams;
@@ -318,217 +327,231 @@ export default async function ObservabilityPage({
   });
 
   return (
-    <main className={styles.page}>
-      <div className={styles.shell}>
-        <header className={styles.header}>
-          <div>
-            <div className={styles.eyebrow}>Private operations console</div>
+    <>
+      <AdminSessionRefresh />
 
-            <h1 className={styles.title}>ELO Trail observability</h1>
+      <main className={styles.page}>
+        <div className={styles.shell}>
+          <header className={styles.header}>
+            <div>
+              <div className={styles.eyebrow}>Private operations console</div>
 
-            <p className={styles.subtitle}>
-              Operational health, cache efficiency and bounded AoE4World usage.
-              Search text, IP addresses and credentials are never displayed.
-            </p>
+              <h1 className={styles.title}>ELO Trail observability</h1>
+
+              <p className={styles.subtitle}>
+                Operational health, cache efficiency and bounded AoE4World
+                usage. Search text, IP addresses and credentials are never
+                displayed.
+              </p>
+            </div>
+            <form action="/api/admin/logout" method="post">
+              <button type="submit" className={styles.logoutButton}>
+                Sign out
+              </button>
+            </form>
+            <div className={styles.timestamp}>
+              Generated
+              <br />
+              {dateTime(current.generatedAt)}
+              <br />
+              Window begins
+              <br />
+              {dateTime(current.windowStartedAt)}
+            </div>
+          </header>
+
+          <nav
+            className={styles.windowNavigation}
+            aria-label="Reporting window"
+          >
+            {Object.entries(WINDOW_LABELS).map(([windowValue, label]) => {
+              const active = windowValue === window;
+
+              return (
+                <Link
+                  key={windowValue}
+                  href={`/admin/observability?window=${windowValue}`}
+                  className={`${styles.windowLink} ${
+                    active ? styles.windowLinkActive : ""
+                  }`}
+                  aria-current={active ? "page" : undefined}
+                >
+                  {label}
+                </Link>
+              );
+            })}
+          </nav>
+
+          <section
+            className={styles.kpiGrid}
+            aria-label="Operational health summary"
+          >
+            <KpiCard
+              label="Operational events"
+              value={number(current.overview.totalEvents)}
+              detail="Recorded events in this window"
+              tone={getVolumeTone(current.overview.errorEvents)}
+              trend={trends.totalEvents}
+              icon={<Activity size={13} aria-hidden="true" />}
+            />
+
+            <KpiCard
+              label="Error rate"
+              value={percentage(current.overview.errorRate)}
+              detail={`${number(current.overview.errorEvents)} error events`}
+              tone={getErrorRateTone(current.overview.errorRate)}
+              trend={trends.errorRate}
+              lowerIsBetter
+              icon={<AlertTriangle size={13} aria-hidden="true" />}
+            />
+
+            <KpiCard
+              label="Average duration"
+              value={duration(current.overview.averageDurationMs)}
+              detail={`Maximum ${duration(current.overview.maximumDurationMs)}`}
+              tone={getDurationTone(current.overview.averageDurationMs)}
+              trend={trends.averageDurationMs}
+              lowerIsBetter
+              icon={<Clock3 size={13} aria-hidden="true" />}
+            />
+
+            <KpiCard
+              label="Fresh cache rate"
+              value={percentage(current.history.cacheHitRate)}
+              detail={`${number(
+                current.history.freshCacheHits,
+              )} fresh cache outcomes`}
+              tone={getCacheTone(current.history.cacheHitRate)}
+              trend={trends.cacheHitRate}
+              icon={<CheckCircle2 size={13} aria-hidden="true" />}
+            />
+
+            <KpiCard
+              label="Upstream games"
+              value={number(current.apiEfficiency.upstreamGames)}
+              detail={`${number(
+                current.apiEfficiency.returnedGames,
+              )} games served`}
+              tone="green"
+              trend={trends.upstreamGames}
+              lowerIsBetter
+              icon={<Database size={13} aria-hidden="true" />}
+            />
+          </section>
+
+          <div className={styles.dashboardGrid}>
+            <HistoryPanel dashboard={current} />
+            <ActivityPanel dashboard={current} />
           </div>
 
-          <div className={styles.timestamp}>
-            Generated
-            <br />
-            {dateTime(current.generatedAt)}
-            <br />
-            Window begins
-            <br />
-            {dateTime(current.windowStartedAt)}
-          </div>
-        </header>
+          <section className={styles.panel}>
+            <div className={styles.panelHeader}>
+              <h2 className={styles.panelTitle}>Route performance</h2>
 
-        <nav className={styles.windowNavigation} aria-label="Reporting window">
-          {Object.entries(WINDOW_LABELS).map(([windowValue, label]) => {
-            const active = windowValue === window;
+              <p className={styles.panelDescription}>
+                Volume, failure rate and response duration grouped by route.
+              </p>
+            </div>
 
-            return (
-              <Link
-                key={windowValue}
-                href={`/admin/observability?window=${windowValue}`}
-                className={`${styles.windowLink} ${
-                  active ? styles.windowLinkActive : ""
-                }`}
-                aria-current={active ? "page" : undefined}
-              >
-                {label}
-              </Link>
-            );
-          })}
-        </nav>
+            {current.routes.length === 0 ? (
+              <div className={styles.emptyState}>
+                No route activity was recorded during this period.
+              </div>
+            ) : (
+              <div className={styles.tableWrapper}>
+                <table className={styles.table}>
+                  <thead>
+                    <tr>
+                      <th>Route</th>
+                      <th>Events</th>
+                      <th>Errors</th>
+                      <th>Error rate</th>
+                      <th>Average</th>
+                      <th>Maximum</th>
+                    </tr>
+                  </thead>
 
-        <section
-          className={styles.kpiGrid}
-          aria-label="Operational health summary"
-        >
-          <KpiCard
-            label="Operational events"
-            value={number(current.overview.totalEvents)}
-            detail="Recorded events in this window"
-            tone={getVolumeTone(current.overview.errorEvents)}
-            trend={trends.totalEvents}
-            icon={<Activity size={13} aria-hidden="true" />}
-          />
+                  <tbody>
+                    {current.routes.map((route) => (
+                      <tr key={route.route}>
+                        <td className={styles.routeName}>{route.route}</td>
+                        <td>{number(route.requests)}</td>
+                        <td>{number(route.errors)}</td>
+                        <td>{percentage(route.errorRate)}</td>
+                        <td>{duration(route.averageDurationMs)}</td>
+                        <td>{duration(route.maximumDurationMs)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
 
-          <KpiCard
-            label="Error rate"
-            value={percentage(current.overview.errorRate)}
-            detail={`${number(current.overview.errorEvents)} error events`}
-            tone={getErrorRateTone(current.overview.errorRate)}
-            trend={trends.errorRate}
-            lowerIsBetter
-            icon={<AlertTriangle size={13} aria-hidden="true" />}
-          />
+          <section className={`${styles.panel} ${styles.errorsPanel}`}>
+            <div className={styles.panelHeader}>
+              <h2 className={styles.panelTitle}>Recent operational errors</h2>
 
-          <KpiCard
-            label="Average duration"
-            value={duration(current.overview.averageDurationMs)}
-            detail={`Maximum ${duration(current.overview.maximumDurationMs)}`}
-            tone={getDurationTone(current.overview.averageDurationMs)}
-            trend={trends.averageDurationMs}
-            lowerIsBetter
-            icon={<Clock3 size={13} aria-hidden="true" />}
-          />
+              <p className={styles.panelDescription}>
+                The ten latest bounded errors in the selected reporting window.
+              </p>
+            </div>
 
-          <KpiCard
-            label="Fresh cache rate"
-            value={percentage(current.history.cacheHitRate)}
-            detail={`${number(
-              current.history.freshCacheHits,
-            )} fresh cache outcomes`}
-            tone={getCacheTone(current.history.cacheHitRate)}
-            trend={trends.cacheHitRate}
-            icon={<CheckCircle2 size={13} aria-hidden="true" />}
-          />
+            {current.recentErrors.length === 0 ? (
+              <div className={styles.emptyState}>
+                No operational errors were recorded.
+              </div>
+            ) : (
+              <div className={styles.tableWrapper}>
+                <table className={styles.table}>
+                  <thead>
+                    <tr>
+                      <th>Time</th>
+                      <th>Event</th>
+                      <th>Route</th>
+                      <th>Status</th>
+                      <th>Error code</th>
+                      <th>Duration</th>
+                    </tr>
+                  </thead>
 
-          <KpiCard
-            label="Upstream games"
-            value={number(current.apiEfficiency.upstreamGames)}
-            detail={`${number(
-              current.apiEfficiency.returnedGames,
-            )} games served`}
-            tone="green"
-            trend={trends.upstreamGames}
-            lowerIsBetter
-            icon={<Database size={13} aria-hidden="true" />}
-          />
-        </section>
+                  <tbody>
+                    {current.recentErrors.map((error) => (
+                      <tr
+                        key={`${error.createdAt}-${error.eventName}-${error.route}`}
+                      >
+                        <td>{dateTime(error.createdAt)}</td>
+                        <td>{error.eventName}</td>
+                        <td className={styles.routeName}>
+                          {error.route ?? "—"}
+                        </td>
+                        <td>{error.statusCode ?? "—"}</td>
+                        <td className={styles.errorCode}>
+                          {error.errorCode ?? "—"}
+                        </td>
+                        <td>
+                          {error.durationMs === null
+                            ? "—"
+                            : duration(error.durationMs)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
 
-        <div className={styles.dashboardGrid}>
-          <HistoryPanel dashboard={current} />
-          <ActivityPanel dashboard={current} />
+          <footer className={styles.footer}>
+            <Gauge size={13} aria-hidden="true" /> Server-rendered operational
+            snapshot · no client polling
+            {" · "}
+            <Search size={13} aria-hidden="true" /> Search text is not retained
+            {" · "}
+            <ServerCog size={13} aria-hidden="true" /> Private access only
+          </footer>
         </div>
-
-        <section className={styles.panel}>
-          <div className={styles.panelHeader}>
-            <h2 className={styles.panelTitle}>Route performance</h2>
-
-            <p className={styles.panelDescription}>
-              Volume, failure rate and response duration grouped by route.
-            </p>
-          </div>
-
-          {current.routes.length === 0 ? (
-            <div className={styles.emptyState}>
-              No route activity was recorded during this period.
-            </div>
-          ) : (
-            <div className={styles.tableWrapper}>
-              <table className={styles.table}>
-                <thead>
-                  <tr>
-                    <th>Route</th>
-                    <th>Events</th>
-                    <th>Errors</th>
-                    <th>Error rate</th>
-                    <th>Average</th>
-                    <th>Maximum</th>
-                  </tr>
-                </thead>
-
-                <tbody>
-                  {current.routes.map((route) => (
-                    <tr key={route.route}>
-                      <td className={styles.routeName}>{route.route}</td>
-                      <td>{number(route.requests)}</td>
-                      <td>{number(route.errors)}</td>
-                      <td>{percentage(route.errorRate)}</td>
-                      <td>{duration(route.averageDurationMs)}</td>
-                      <td>{duration(route.maximumDurationMs)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </section>
-
-        <section className={`${styles.panel} ${styles.errorsPanel}`}>
-          <div className={styles.panelHeader}>
-            <h2 className={styles.panelTitle}>Recent operational errors</h2>
-
-            <p className={styles.panelDescription}>
-              The ten latest bounded errors in the selected reporting window.
-            </p>
-          </div>
-
-          {current.recentErrors.length === 0 ? (
-            <div className={styles.emptyState}>
-              No operational errors were recorded.
-            </div>
-          ) : (
-            <div className={styles.tableWrapper}>
-              <table className={styles.table}>
-                <thead>
-                  <tr>
-                    <th>Time</th>
-                    <th>Event</th>
-                    <th>Route</th>
-                    <th>Status</th>
-                    <th>Error code</th>
-                    <th>Duration</th>
-                  </tr>
-                </thead>
-
-                <tbody>
-                  {current.recentErrors.map((error) => (
-                    <tr
-                      key={`${error.createdAt}-${error.eventName}-${error.route}`}
-                    >
-                      <td>{dateTime(error.createdAt)}</td>
-                      <td>{error.eventName}</td>
-                      <td className={styles.routeName}>{error.route ?? "—"}</td>
-                      <td>{error.statusCode ?? "—"}</td>
-                      <td className={styles.errorCode}>
-                        {error.errorCode ?? "—"}
-                      </td>
-                      <td>
-                        {error.durationMs === null
-                          ? "—"
-                          : duration(error.durationMs)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </section>
-
-        <footer className={styles.footer}>
-          <Gauge size={13} aria-hidden="true" /> Server-rendered operational
-          snapshot · no client polling
-          {" · "}
-          <Search size={13} aria-hidden="true" /> Search text is not retained
-          {" · "}
-          <ServerCog size={13} aria-hidden="true" /> Private access only
-        </footer>
-      </div>
-    </main>
+      </main>
+    </>
   );
 }

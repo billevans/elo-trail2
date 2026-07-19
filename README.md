@@ -65,7 +65,7 @@ ELO Trail uses the AoE4World public API responsibly.
 - Individual player history Cached and refreshed only when necessary, with browser cache-busting when new history is requested
 - Comparison data Reuses cached player history wherever possible
 
-## Private observability dashboard
+## Administrator Dashboard
 
 ELO Trail includes a private server-rendered operational dashboard at:
 
@@ -75,13 +75,16 @@ The dashboard reports bounded operational data for the preceding 24 hours,
 7 days, or 30 days. It does not display player search text, IP addresses,
 credentials, stack traces, or raw user-agent values.
 
-Configure HTTP Basic authentication with:
+The observability dashboard is protected by:
 
-```dotenv
-OBSERVABILITY_DASHBOARD_USERNAME=
-OBSERVABILITY_DASHBOARD_PASSWORD=
+- administrator username/password
+- signed HTTP-only session cookie
+- server-side session validation
+- Proxy redirect
+- page-level authorization
 
-## Git commit test
+Environment variables:
 
-- test 9:56am 14/07
-```
+OBSERVABILITY_DASHBOARD_USERNAME
+OBSERVABILITY_DASHBOARD_PASSWORD
+OBSERVABILITY_SESSION_SECRET
