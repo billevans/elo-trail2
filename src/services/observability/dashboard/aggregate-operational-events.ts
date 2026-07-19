@@ -251,7 +251,10 @@ export function aggregateOperationalEvents({
   window,
   windowStartedAt,
   generatedAt = new Date(),
-}: AggregateOperationalEventsOptions): ObservabilityDashboard {
+}: AggregateOperationalEventsOptions): Omit<
+  ObservabilityDashboard,
+  "cacheCapacity"
+> {
   const errorEvents = events.filter(isErrorEvent).length;
 
   const durations = events
