@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { headers } from "next/headers";
-import { notFound } from "next/navigation";
+import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
+
 import {
   Activity,
   AlertTriangle,
@@ -18,12 +19,16 @@ import {
 
 import {
   getObservabilityDashboardComparison,
-  isDashboardAuthorised,
   normaliseObservabilityWindow,
   type MetricTrend,
   type ObservabilityDashboard,
   type ObservabilityWindow,
 } from "@/services/observability/dashboard";
+
+import {
+  ADMIN_SESSION_COOKIE,
+  verifyAdminSessionToken,
+} from "@/services/observability/dashboard/admin-session";
 
 import styles from "./observability-dashboard.module.css";
 
@@ -299,10 +304,13 @@ function ActivityPanel({ dashboard }: { dashboard: ObservabilityDashboard }) {
 export default async function ObservabilityPage({
   searchParams,
 }: ObservabilityPageProps) {
-  const requestHeaders = await headers();
+  const cookieStore = await cookies();
 
-  if (!isDashboardAuthorised(requestHeaders.get("authorization"))) {
-    notFound();
+  const token = cookieStore.get(ADMIN_SESSION_COOKIE)?.value;
+  const session = verifyAdminSessionToken(token);
+
+  if (!session) {
+    redirect("/admin/login?next=%2Fadmin%2Fobservability");
   }
 
   const resolvedSearchParams = await searchParams;

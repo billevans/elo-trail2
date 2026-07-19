@@ -12,6 +12,17 @@ import {
 const LOGIN_PATH = "/admin/login";
 const DASHBOARD_PATH = "/admin/observability";
 
+function getPublicOrigin(request: NextRequest): string {
+  const forwardedHost = request.headers.get("x-forwarded-host");
+  const forwardedProto = request.headers.get("x-forwarded-proto") ?? "https";
+
+  if (forwardedHost) {
+    return `${forwardedProto}://${forwardedHost}`;
+  }
+
+  return request.nextUrl.origin;
+}
+
 function getFormValue(formData: FormData, key: string): string {
   const value = formData.get(key);
 
@@ -76,7 +87,7 @@ export async function POST(request: NextRequest) {
   const token = createAdminSessionToken(username);
 
   const response = NextResponse.redirect(
-    new URL(destination, request.url),
+    new URL(destination, getPublicOrigin(request)),
     303,
   );
 
