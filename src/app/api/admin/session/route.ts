@@ -46,7 +46,7 @@ function createLoginUrl(
   error: string,
   destination: string,
 ): URL {
-  const url = new URL(LOGIN_PATH, request.url);
+  const url = new URL(LOGIN_PATH, getPublicOrigin(request));
 
   url.searchParams.set("error", error);
   url.searchParams.set("next", destination);
