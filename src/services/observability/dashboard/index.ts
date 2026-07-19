@@ -1,5 +1,6 @@
 export * from "./aggregate-operational-events";
 export * from "./compare-observability-dashboards";
+export * from "./cache-capacity";
 export * from "./dashboard-auth";
 export * from "./get-observability-dashboard";
 export * from "./get-observability-dashboard-comparison";

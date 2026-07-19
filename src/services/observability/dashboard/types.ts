@@ -1,3 +1,5 @@
+import type { CacheCapacitySnapshot } from "./cache-capacity";
+
 export const OBSERVABILITY_WINDOWS = ["24h", "7d", "30d"] as const;
 
 export type ObservabilityWindow = (typeof OBSERVABILITY_WINDOWS)[number];
@@ -99,6 +101,8 @@ export interface ObservabilityDashboard {
   window: ObservabilityWindow;
   windowStartedAt: string;
   generatedAt: string;
+
+  cacheCapacity: CacheCapacitySnapshot;
 
   overview: ObservabilityOverview;
   apiEfficiency: ApiEfficiencySummary;

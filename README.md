@@ -22,8 +22,10 @@ This project uses [`next/font`](https://nextjs.org/docs/app/building-your-applic
 
 ## About ELO-trail
 
-ELO trail is a fan made website developed and maintained by AOE4 player Willyodas, code has been written with AI assistance.
-ElO trail sources data from the aeo4world API.
+ELO Trail is a fan-made website developed and maintained by Age of Empires IV
+player Willyodas. The code has been written with AI assistance.
+
+ELO Trail sources public game data from the AoE4World API.
 
 ## ELO-trail Development Principle
 
@@ -56,7 +58,7 @@ ELO Trail uses the AoE4World public API responsibly.
 - History requests are bounded
 - Low request concurrency
 - Requests identify the application with a dedicated User-Agent
-- Current Data Refresh Strategy
+- Documented data-refresh strategy
 
 ## Data Refresh Strategy
 
@@ -67,24 +69,43 @@ ELO Trail uses the AoE4World public API responsibly.
 
 ## Administrator Dashboard
 
-ELO Trail includes a private server-rendered operational dashboard at:
+ELO Trail includes a private, server-rendered operational dashboard at:
 
-`/admin/observability`
+```text
+/admin/observability
+```
 
-The dashboard reports bounded operational data for the preceding 24 hours,
-7 days, or 30 days. It does not display player search text, IP addresses,
-credentials, stack traces, or raw user-agent values.
+The dashboard reports:
 
-The observability dashboard is protected by:
+- operational health across 24-hour, 7-day and 30-day windows;
+- route error rates and response durations;
+- history-cache outcomes and refresh behaviour;
+- bounded AoE4World API usage;
+- current persistent-cache database capacity;
+- recent operational errors.
 
-- administrator username/password
-- signed HTTP-only session cookie
-- server-side session validation
-- Proxy redirect
-- page-level authorization
+It does not display player search text, IP addresses, credentials, stack traces
+or raw user-agent values.
 
-Environment variables:
+The dashboard is protected by:
 
-OBSERVABILITY_DASHBOARD_USERNAME
-OBSERVABILITY_DASHBOARD_PASSWORD
-OBSERVABILITY_SESSION_SECRET
+- administrator username and password authentication;
+- a signed HTTP-only session cookie;
+- server-side session validation;
+- proxy-level redirection;
+- page-level authorisation.
+
+Required environment variables:
+
+```env
+OBSERVABILITY_DASHBOARD_USERNAME=
+OBSERVABILITY_DASHBOARD_PASSWORD=
+OBSERVABILITY_SESSION_SECRET=
+OBSERVABILITY_DATABASE_ALLOWANCE_BYTES="524288000"
+```
+
+The configured database allowance is a capacity-planning reference. It does not
+place a limit on PostgreSQL or automatically delete cached data.
+
+See `docs/observability.md` for metric definitions, capacity thresholds and
+operational guidance.

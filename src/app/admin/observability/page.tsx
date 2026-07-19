@@ -83,6 +83,14 @@ function duration(value: number): string {
   return `${Math.round(value)}ms`;
 }
 
+function bytes(value: number | null): string {
+  if (value === null) {
+    return "—";
+  }
+
+  return `${number(Math.round(value))} B`;
+}
+
 function dateTime(value: string): string {
   return new Intl.DateTimeFormat("en-NZ", {
     dateStyle: "medium",
@@ -133,6 +141,18 @@ function getDurationTone(averageDurationMs: number): HealthTone {
   }
 
   if (averageDurationMs < 2_000) {
+    return "amber";
+  }
+
+  return "red";
+}
+
+function getCapacityTone(utilisation: number): HealthTone {
+  if (utilisation < 0.7) {
+    return "green";
+  }
+
+  if (utilisation < 0.9) {
     return "amber";
   }
 
@@ -302,6 +322,67 @@ function ActivityPanel({ dashboard }: { dashboard: ObservabilityDashboard }) {
   );
 }
 
+function CacheCapacityPanel({
+  dashboard,
+}: {
+  dashboard: ObservabilityDashboard;
+}) {
+  const capacity = dashboard.cacheCapacity;
+
+  const metrics = [
+    ["Database usage", `${percentage(capacity.utilisationRate)}`],
+    ["Cache records", number(capacity.cacheCount)],
+    ["Cached games", number(capacity.cachedGameCount)],
+    ["Average / cache", bytes(capacity.averageBytesPerCache)],
+    ["Average / game", bytes(capacity.averageBytesPerGame)],
+    [
+      "Allowance",
+      `${number(Math.round(capacity.databaseAllowanceBytes / 1024 / 1024))} MB`,
+    ],
+    [
+      "Oldest refresh",
+      capacity.oldestRefreshedAt
+        ? dateTime(capacity.oldestRefreshedAt)
+        : "No cached history",
+    ],
+    [
+      "Newest refresh",
+      capacity.newestRefreshedAt
+        ? dateTime(capacity.newestRefreshedAt)
+        : "No cached history",
+    ],
+  ] as const;
+
+  return (
+    <section className={styles.panel}>
+      <div className={styles.panelHeader}>
+        <h2 className={styles.panelTitle}>Cache capacity planning</h2>
+
+        <p className={styles.panelDescription}>
+          Current PostgreSQL storage consumption for persistent history caching.
+        </p>
+
+        <span
+          className={`${styles.status} ${getStatusClass(
+            getCapacityTone(capacity.utilisationRate),
+          )}`}
+        >
+          {getStatusLabel(getCapacityTone(capacity.utilisationRate))}
+        </span>
+      </div>
+
+      <div className={styles.metricList}>
+        {metrics.map(([label, value]) => (
+          <div className={styles.metricItem} key={label}>
+            <div className={styles.metricLabel}>{label}</div>
+            <div className={styles.metricValue}>{value}</div>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 export default async function ObservabilityPage({
   searchParams,
 }: ObservabilityPageProps) {
@@ -442,6 +523,7 @@ export default async function ObservabilityPage({
           <div className={styles.dashboardGrid}>
             <HistoryPanel dashboard={current} />
             <ActivityPanel dashboard={current} />
+            <CacheCapacityPanel dashboard={current} />
           </div>
 
           <section className={styles.panel}>

@@ -1,3 +1,4 @@
+import { getCacheCapacitySnapshot } from "./cache-capacity";
 import { compareObservabilityDashboards } from "./compare-observability-dashboards";
 import { getObservabilityDashboard } from "./get-observability-dashboard";
 import { getObservabilityWindowStart } from "./reporting-window";
@@ -18,16 +19,19 @@ export async function getObservabilityDashboardComparison({
   const currentWindowStartedAt = getObservabilityWindowStart(window, now);
 
   const previousWindowEndedAt = currentWindowStartedAt;
+  const cacheCapacity = await getCacheCapacitySnapshot();
 
   const [current, previous] = await Promise.all([
     getObservabilityDashboard({
       window,
       now,
+      cacheCapacity,
     }),
 
     getObservabilityDashboard({
       window,
       now: previousWindowEndedAt,
+      cacheCapacity,
     }),
   ]);
 
