@@ -38,7 +38,6 @@ export function PlayerCard({
             ].join(" ")}
           >
             Profile #{player.profile_id}
-            {player.country ? ` · ${player.country}` : ""}
           </p>
 
           <p

@@ -141,8 +141,6 @@ export function PlayerHistoryPanel({
           <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-sm text-black/55 dark:text-white/55">
             <span>Profile #{player.profile_id}</span>
 
-            {player.country && <span>{player.country}</span>}
-
             {career.currentElo !== null && (
               <span>Matchmaking ELO: {career.currentElo.toLocaleString()}</span>
             )}

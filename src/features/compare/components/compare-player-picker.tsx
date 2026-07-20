@@ -48,7 +48,6 @@ export function ComparePlayerPicker({
 
               <p className="text-sm text-black/55 dark:text-white/55">
                 Profile #{player.profile_id.toLocaleString()}
-                {player.country ? ` · ${player.country.toUpperCase()}` : ""}
               </p>
             </div>
           ) : (
@@ -123,9 +122,6 @@ export function ComparePlayerPicker({
 
                     <p className="text-xs text-black/50 dark:text-white/50">
                       Profile #{result.profile_id}
-                      {result.country
-                        ? ` · ${result.country.toUpperCase()}`
-                        : ""}
                     </p>
                   </div>
 
