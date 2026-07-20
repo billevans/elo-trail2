@@ -1,7 +1,6 @@
 import Link from "next/link";
 
-import { PlayerSearch } from "@/features/player";
-import { HomepageLeaderboard } from "@/features/leaderboard";
+import { HomepagePlayerWorkspace } from "@/features/player/components/homepage-player-workspace";
 
 export default function DashboardPage() {
   return (
@@ -30,8 +29,7 @@ export default function DashboardPage() {
             Compare two players
           </Link>
         </header>
-        <PlayerSearch />
-        <HomepageLeaderboard />
+        <HomepagePlayerWorkspace />
       </div>
     </main>
   );

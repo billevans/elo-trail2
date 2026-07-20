@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { Search } from "lucide-react";
 
 import type { Aoe4WorldPlayer } from "@/services/aoe4world";
@@ -8,38 +8,23 @@ import type { Aoe4WorldPlayer } from "@/services/aoe4world";
 import { usePlayerSearch } from "../hooks/use-player-search";
 
 import { PlayerCard } from "./player-card";
-import { PlayerHistoryPanel } from "./player-history-panel";
 
-export function PlayerSearch() {
+interface PlayerSearchProps {
+  selectedPlayer: Aoe4WorldPlayer | null;
+  onSelectPlayer: (player: Aoe4WorldPlayer | null) => void;
+}
+
+export function PlayerSearch({
+  selectedPlayer,
+  onSelectPlayer,
+}: PlayerSearchProps) {
   const [query, setQuery] = useState("");
   const [isResultsOpen, setIsResultsOpen] = useState(false);
-  const [selectedPlayer, setSelectedPlayer] = useState<Aoe4WorldPlayer | null>(
-    null,
-  );
-
-  const historyPanelRef = useRef<HTMLDivElement | null>(null);
 
   const { data, isLoading, error } = usePlayerSearch(query);
 
-  useEffect(() => {
-    if (!selectedPlayer) {
-      return;
-    }
-
-    const animationFrame = window.requestAnimationFrame(() => {
-      historyPanelRef.current?.scrollIntoView({
-        behavior: "smooth",
-        block: "start",
-      });
-    });
-
-    return () => {
-      window.cancelAnimationFrame(animationFrame);
-    };
-  }, [selectedPlayer]);
-
   function handleSelectPlayer(player: Aoe4WorldPlayer) {
-    setSelectedPlayer(player);
+    onSelectPlayer(player);
     setQuery(player.name);
     setIsResultsOpen(false);
   }
@@ -52,7 +37,7 @@ export function PlayerSearch() {
      * Once the user edits the query, the previous player panel
      * is no longer the active search context.
      */
-    setSelectedPlayer(null);
+    onSelectPlayer(null);
   }
 
   function handleSearchFocus() {
@@ -131,18 +116,6 @@ export function PlayerSearch() {
             </p>
           </div>
         )}
-
-      {selectedPlayer && (
-        <div ref={historyPanelRef} className="scroll-mt-6">
-          <PlayerHistoryPanel
-            player={selectedPlayer}
-            onClose={() => {
-              setSelectedPlayer(null);
-              setIsResultsOpen(false);
-            }}
-          />
-        </div>
-      )}
     </div>
   );
 }
