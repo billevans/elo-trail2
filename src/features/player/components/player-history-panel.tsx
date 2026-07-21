@@ -1,8 +1,15 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useId, useMemo, useState } from "react";
 import { format } from "date-fns";
-import { AlertCircle, LoaderCircle, Swords, X } from "lucide-react";
+import {
+  AlertCircle,
+  ChevronDown,
+  ChevronUp,
+  LoaderCircle,
+  Swords,
+  X,
+} from "lucide-react";
 
 import { calculatePlayerAnalytics } from "@/services/analytics";
 import type { Aoe4WorldPlayer } from "@/services/aoe4world";
@@ -92,6 +99,9 @@ export function PlayerHistoryPanel({
   onClose,
 }: PlayerHistoryPanelProps) {
   const [range, setRange] = useState<HistoryRange>("180d");
+  const [isAnalyticsExpanded, setIsAnalyticsExpanded] = useState(false);
+
+  const analyticsRegionId = useId();
 
   const { data, isLoading, isFetching, error, refetch } = usePlayerHistory(
     player.profile_id,
@@ -122,19 +132,30 @@ export function PlayerHistoryPanel({
     [career, filteredMatches, filteredPoints],
   );
 
+  function handleClose() {
+    setIsAnalyticsExpanded(false);
+    onClose();
+  }
+
   return (
-    <section className="space-y-6 rounded-2xl border border-black/10 bg-black/[0.02] p-4 sm:p-6 dark:border-white/10 dark:bg-white/[0.03]">
-      <header className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
-        <div>
+    <section
+      aria-labelledby="player-history-heading"
+      className="space-y-6 rounded-2xl border border-black/10 bg-black/[0.02] p-4 sm:p-6 dark:border-white/10 dark:bg-white/[0.03]"
+    >
+      <header className="flex items-start justify-between gap-4">
+        <div className="min-w-0">
           <div className="flex items-center gap-2">
-            <Swords className="size-5" aria-hidden="true" />
+            <Swords className="size-5 shrink-0" aria-hidden="true" />
 
             <p className="text-sm font-medium text-black/55 dark:text-white/55">
-              Ranked matchmaking ELO history
+              Matchmaking ELO history
             </p>
           </div>
 
-          <h2 className="mt-2 text-3xl font-bold tracking-tight">
+          <h2
+            id="player-history-heading"
+            className="mt-2 text-2xl font-bold tracking-tight break-words sm:text-3xl"
+          >
             {player.name}
           </h2>
 
@@ -156,8 +177,14 @@ export function PlayerHistoryPanel({
 
         <button
           type="button"
-          onClick={onClose}
-          className="inline-flex size-10 shrink-0 items-center justify-center self-end rounded-lg border border-black/10 transition-colors hover:bg-black/5 sm:self-auto dark:border-white/10 dark:hover:bg-white/10"
+          onClick={handleClose}
+          className={[
+            "inline-flex size-11 shrink-0 items-center justify-center rounded-lg border border-black/10 transition-colors",
+            "hover:bg-black/5",
+            "focus-visible:ring-2 focus-visible:ring-black/40 focus-visible:ring-offset-2 focus-visible:outline-none",
+            "dark:border-white/10 dark:hover:bg-white/10",
+            "dark:focus-visible:ring-white/50 dark:focus-visible:ring-offset-black",
+          ].join(" ")}
           aria-label={`Close ${player.name} history`}
         >
           <X className="size-4" aria-hidden="true" />
@@ -165,36 +192,59 @@ export function PlayerHistoryPanel({
       </header>
 
       {isLoading ? (
-        <div className="flex min-h-96 items-center justify-center">
-          <div className="flex items-center gap-3 text-black/60 dark:text-white/60">
-            <LoaderCircle className="size-5 animate-spin" aria-hidden="true" />
+        <div
+          role="status"
+          aria-live="polite"
+          aria-busy="true"
+          className="flex min-h-80 items-center justify-center rounded-xl border border-black/10 bg-white/50 p-6 text-center dark:border-white/10 dark:bg-black/10"
+        >
+          <div className="flex flex-col items-center gap-3">
+            <LoaderCircle
+              className="size-6 animate-spin text-black/55 dark:text-white/55"
+              aria-hidden="true"
+            />
 
-            <span>Loading matchmaking ELO history…</span>
+            <div>
+              <p className="font-medium">Loading matchmaking ELO history</p>
+
+              <p className="mt-1 text-sm text-black/55 dark:text-white/55">
+                Preparing the player&apos;s ELO trail and recent results…
+              </p>
+            </div>
           </div>
         </div>
       ) : error ? (
-        <div className="flex min-h-72 flex-col items-center justify-center rounded-xl border border-dashed border-red-500/30 p-6 text-center">
+        <div
+          role="alert"
+          className="flex min-h-72 flex-col items-center justify-center rounded-xl border border-dashed border-red-500/30 p-6 text-center"
+        >
           <AlertCircle className="size-8 text-red-500" aria-hidden="true" />
 
           <h3 className="mt-3 font-semibold">
             ELO history could not be loaded
           </h3>
 
-          <p className="mt-1 max-w-md text-sm text-black/55 dark:text-white/55">
+          <p className="mt-1 max-w-md text-sm break-words text-black/55 dark:text-white/55">
             {error.message}
           </p>
 
           <button
             type="button"
             onClick={() => void refetch()}
-            className="mt-4 rounded-lg bg-black px-4 py-2 text-sm font-medium text-white dark:bg-white dark:text-black"
+            className={[
+              "mt-4 inline-flex min-h-10 items-center justify-center rounded-lg bg-black px-4 py-2",
+              "text-sm font-medium text-white transition hover:bg-black/80",
+              "focus-visible:ring-2 focus-visible:ring-black/40 focus-visible:ring-offset-2 focus-visible:outline-none",
+              "dark:bg-white dark:text-black dark:hover:bg-white/80",
+              "dark:focus-visible:ring-white/50 dark:focus-visible:ring-offset-black",
+            ].join(" ")}
           >
             Try again
           </button>
         </div>
       ) : (
         <>
-          <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
+          <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
             <div>
               <h3 className="text-lg font-semibold">
                 Matchmaking ELO progression
@@ -202,36 +252,137 @@ export function PlayerHistoryPanel({
 
               <p className="text-sm text-black/55 dark:text-white/55">
                 {filteredPoints.length.toLocaleString()} history points shown
-                {isFetching ? " · refreshing" : ""}
               </p>
             </div>
 
-            <HistoryRangeSelector value={range} onChange={setRange} />
+            <div className="flex flex-col items-start gap-2 sm:items-end">
+              {isFetching && (
+                <p
+                  role="status"
+                  aria-live="polite"
+                  className="text-xs text-black/45 dark:text-white/45"
+                >
+                  Refreshing ELO history…
+                </p>
+              )}
+
+              <HistoryRangeSelector value={range} onChange={setRange} />
+            </div>
           </div>
 
-          <PlayerAnalyticsCards analytics={analytics} />
+          {filteredPoints.length === 0 ? (
+            <div className="flex min-h-72 items-center justify-center rounded-xl border border-dashed border-black/15 p-6 text-center dark:border-white/15">
+              <div>
+                <h3 className="font-semibold">No ELO history in this range</h3>
 
-          <div className="rounded-xl border border-black/10 bg-white p-3 sm:p-5 dark:border-white/10 dark:bg-black/10">
-            <EloHistoryChart points={filteredPoints} />
-          </div>
+                <p className="mt-1 text-sm text-black/55 dark:text-white/55">
+                  Try selecting a longer period to view more of this
+                  player&apos;s ELO trail.
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div className="rounded-xl border border-black/10 bg-white p-2 sm:p-5 dark:border-white/10 dark:bg-black/10">
+              <EloHistoryChart points={filteredPoints} />
+            </div>
+          )}
 
-          <CivilisationAnalyticsPanel analytics={analytics.civilisations} />
+          <section
+            aria-labelledby={`${analyticsRegionId}-heading`}
+            className="space-y-4"
+          >
+            <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
+              <div>
+                <h3
+                  id={`${analyticsRegionId}-heading`}
+                  className="text-lg font-semibold"
+                >
+                  Player analytics
+                </h3>
 
-          <OpponentAnalyticsPanel analytics={analytics.opponents} />
+                <p className="text-sm text-black/55 dark:text-white/55">
+                  Performance insights for the selected history range.
+                </p>
+              </div>
 
-          <div>
+              <button
+                type="button"
+                onClick={() =>
+                  setIsAnalyticsExpanded((currentValue) => !currentValue)
+                }
+                aria-expanded={isAnalyticsExpanded}
+                aria-controls={analyticsRegionId}
+                className={[
+                  "inline-flex min-h-10 items-center justify-center gap-2 self-start rounded-lg border border-black/10 px-3 py-2",
+                  "text-sm font-medium transition hover:bg-black/5 sm:self-auto",
+                  "focus-visible:ring-2 focus-visible:ring-black/40 focus-visible:ring-offset-2 focus-visible:outline-none",
+                  "dark:border-white/10 dark:hover:bg-white/10",
+                  "dark:focus-visible:ring-white/50 dark:focus-visible:ring-offset-black",
+                ].join(" ")}
+              >
+                {isAnalyticsExpanded ? (
+                  <>
+                    Show less
+                    <ChevronUp className="size-4" aria-hidden="true" />
+                  </>
+                ) : (
+                  <>
+                    View all analytics
+                    <ChevronDown className="size-4" aria-hidden="true" />
+                  </>
+                )}
+              </button>
+            </div>
+
+            <div id={analyticsRegionId}>
+              <div
+                className={
+                  isAnalyticsExpanded
+                    ? undefined
+                    : "max-h-40 overflow-hidden sm:max-h-44"
+                }
+              >
+                <PlayerAnalyticsCards analytics={analytics} />
+              </div>
+
+              {!isAnalyticsExpanded && (
+                <div
+                  aria-hidden="true"
+                  className="pointer-events-none -mt-12 h-12 bg-gradient-to-t from-[#fafafa] to-transparent dark:from-[#101010]"
+                />
+              )}
+
+              {isAnalyticsExpanded && (
+                <div className="mt-6 space-y-6">
+                  <CivilisationAnalyticsPanel
+                    analytics={analytics.civilisations}
+                  />
+
+                  <OpponentAnalyticsPanel analytics={analytics.opponents} />
+                </div>
+              )}
+            </div>
+          </section>
+
+          <section aria-labelledby="recent-games-heading">
             <div className="mb-3">
-              <h3 className="text-lg font-semibold">Recent games</h3>
+              <h3 id="recent-games-heading" className="text-lg font-semibold">
+                Recent games
+              </h3>
 
               <p className="text-sm text-black/55 dark:text-white/55">
                 Matchmaking ELO changes from the latest games in the selected
-                range
+                range.
               </p>
             </div>
 
             {filteredMatches.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-black/15 p-8 text-center text-sm text-black/55 dark:border-white/15 dark:text-white/55">
-                No matchmaking ELO games are available for this range.
+              <div className="rounded-xl border border-dashed border-black/15 p-8 text-center dark:border-white/15">
+                <p className="font-medium">No recent games in this range</p>
+
+                <p className="mt-1 text-sm text-black/55 dark:text-white/55">
+                  Try selecting a longer period to view more matchmaking games.
+                </p>
               </div>
             ) : (
               <div className="overflow-hidden rounded-xl border border-black/10 dark:border-white/10">
@@ -244,8 +395,8 @@ export function PlayerHistoryPanel({
                         key={match.gameId}
                         className="flex flex-col justify-between gap-3 bg-white p-4 sm:flex-row sm:items-center dark:bg-white/[0.03]"
                       >
-                        <div>
-                          <div className="flex items-center gap-2">
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
                             <span
                               className={[
                                 "rounded-full px-2 py-0.5 text-xs font-semibold uppercase",
@@ -259,14 +410,14 @@ export function PlayerHistoryPanel({
                               {match.result}
                             </span>
 
-                            <span className="font-medium">
+                            <span className="font-medium break-words">
                               {match.opponentName
                                 ? `vs ${match.opponentName}`
                                 : "Opponent unavailable"}
                             </span>
                           </div>
 
-                          <p className="mt-1 text-sm text-black/55 dark:text-white/55">
+                          <p className="mt-1 text-sm break-words text-black/55 dark:text-white/55">
                             {format(
                               new Date(match.startedAt),
                               "d MMM yyyy, h:mm a",
@@ -280,14 +431,14 @@ export function PlayerHistoryPanel({
                           </p>
                         </div>
 
-                        <div className="text-left sm:text-right">
-                          <p className="font-semibold">
+                        <div className="shrink-0 text-left sm:text-right">
+                          <p className="font-semibold tabular-nums">
                             {match.ratingAfter.toLocaleString()} ELO
                           </p>
 
                           <p
                             className={[
-                              "text-sm font-medium",
+                              "text-sm font-medium tabular-nums",
                               match.ratingChange >= 0
                                 ? "text-emerald-600 dark:text-emerald-400"
                                 : "text-red-600 dark:text-red-400",
@@ -302,7 +453,7 @@ export function PlayerHistoryPanel({
                 </div>
               </div>
             )}
-          </div>
+          </section>
         </>
       )}
     </section>
