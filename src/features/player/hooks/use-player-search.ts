@@ -58,16 +58,23 @@ export function usePlayerSearch(query: string) {
 
   const debouncedQuery = useDebouncedValue(normalisedQuery, SEARCH_DEBOUNCE_MS);
 
-  const isValidQuery =
+  const isCurrentQueryValid =
+    normalisedQuery.length >= MIN_SEARCH_LENGTH &&
+    normalisedQuery.length <= MAX_SEARCH_LENGTH;
+
+  const isDebouncedQueryValid =
     debouncedQuery.length >= MIN_SEARCH_LENGTH &&
     debouncedQuery.length <= MAX_SEARCH_LENGTH;
 
-  return useQuery({
+  const isDebouncing =
+    isCurrentQueryValid && normalisedQuery !== debouncedQuery;
+
+  const queryResult = useQuery({
     queryKey: ["players", debouncedQuery.toLowerCase()],
 
     queryFn: ({ signal }) => fetchPlayers(debouncedQuery, signal),
 
-    enabled: isValidQuery,
+    enabled: isDebouncedQueryValid,
 
     staleTime: 5 * 60 * 1000,
 
@@ -77,4 +84,10 @@ export function usePlayerSearch(query: string) {
 
     refetchOnWindowFocus: false,
   });
+
+  return {
+    ...queryResult,
+    isDebouncing,
+    isSearching: isDebouncing || queryResult.isFetching,
+  };
 }

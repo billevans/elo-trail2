@@ -20,6 +20,8 @@ export function PlayerCard({
       className={[
         "w-full rounded-xl border p-4 text-left transition-all",
         "hover:-translate-y-0.5 hover:shadow-md",
+        "focus-visible:ring-2 focus-visible:ring-black/40 focus-visible:ring-offset-2 focus-visible:outline-none",
+        "dark:focus-visible:ring-white/50 dark:focus-visible:ring-offset-black",
         isSelected
           ? "border-black bg-black text-white dark:border-white dark:bg-white dark:text-black"
           : "border-black/10 bg-white dark:border-white/10 dark:bg-white/5",
