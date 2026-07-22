@@ -339,7 +339,7 @@ export function PlayerHistoryPanel({
                 className={
                   isAnalyticsExpanded
                     ? undefined
-                    : "max-h-40 overflow-hidden sm:max-h-44"
+                    : "max-h-36 overflow-hidden sm:max-h-40"
                 }
               >
                 <PlayerAnalyticsCards analytics={analytics} />

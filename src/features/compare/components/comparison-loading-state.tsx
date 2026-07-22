@@ -8,16 +8,31 @@ export function ComparisonLoadingState({
   message = "Loading comparison…",
 }: ComparisonLoadingStateProps) {
   return (
-    <div
-      role="status"
-      aria-live="polite"
-      className="flex min-h-72 items-center justify-center rounded-2xl border border-dashed border-black/15 bg-black/[0.015] p-8 dark:border-white/15 dark:bg-white/[0.02]"
+    <section
+      aria-busy="true"
+      aria-labelledby="comparison-loading-heading"
+      className="flex min-h-72 items-center justify-center rounded-2xl border border-black/10 bg-black/[0.015] p-6 text-center dark:border-white/10 dark:bg-white/[0.02]"
     >
-      <div className="flex items-center gap-3 text-black/55 dark:text-white/55">
-        <LoaderCircle className="size-5 animate-spin" aria-hidden="true" />
+      <div
+        role="status"
+        aria-live="polite"
+        className="flex flex-col items-center gap-3"
+      >
+        <LoaderCircle
+          className="size-6 animate-spin text-black/55 dark:text-white/55"
+          aria-hidden="true"
+        />
 
-        <span>{message}</span>
+        <div>
+          <h2 id="comparison-loading-heading" className="font-semibold">
+            Preparing comparison
+          </h2>
+
+          <p className="mt-1 text-sm text-black/55 dark:text-white/55">
+            {message}
+          </p>
+        </div>
       </div>
-    </div>
+    </section>
   );
 }

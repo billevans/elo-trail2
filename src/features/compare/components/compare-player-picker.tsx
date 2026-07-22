@@ -1,10 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { Search, UserRound, X } from "lucide-react";
 
-import type { Aoe4WorldPlayer } from "@/services/aoe4world";
 import { usePlayerSearch } from "@/features/player";
+import type { Aoe4WorldPlayer } from "@/services/aoe4world";
+
+const MIN_SEARCH_LENGTH = 3;
+const MAX_SEARCH_LENGTH = 50;
 
 interface ComparePlayerPickerProps {
   label: string;
@@ -22,29 +25,96 @@ export function ComparePlayerPicker({
   onClear,
 }: ComparePlayerPickerProps) {
   const [query, setQuery] = useState("");
+  const [isResultsOpen, setIsResultsOpen] = useState(false);
 
-  const { data, isLoading, error } = usePlayerSearch(query);
+  const containerRef = useRef<HTMLElement | null>(null);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+
+  const resultsRegionId = useId();
+
+  const { data, isSearching, isDebouncing, error } = usePlayerSearch(query);
+
+  const trimmedQuery = query.trim();
+  const hasValidQuery = trimmedQuery.length >= MIN_SEARCH_LENGTH;
 
   const results = (data ?? [])
     .filter((result) => result.profile_id !== excludedPlayerId)
     .slice(0, 8);
 
+  const shouldShowResults =
+    isResultsOpen && hasValidQuery && !isSearching && !isDebouncing && !error;
+
+  useEffect(() => {
+    function handlePointerDown(event: PointerEvent) {
+      const target = event.target;
+
+      if (target instanceof Node && !containerRef.current?.contains(target)) {
+        setIsResultsOpen(false);
+      }
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key !== "Escape" || !isResultsOpen) {
+        return;
+      }
+
+      setIsResultsOpen(false);
+      inputRef.current?.focus();
+    }
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isResultsOpen]);
+
   function handleSelect(selectedPlayer: Aoe4WorldPlayer) {
     onSelect(selectedPlayer);
     setQuery("");
+    setIsResultsOpen(false);
+  }
+
+  function handleClear() {
+    onClear();
+    setQuery("");
+    setIsResultsOpen(false);
+    inputRef.current?.focus();
+  }
+
+  function handleQueryChange(value: string) {
+    setQuery(value);
+    setIsResultsOpen(true);
+  }
+
+  function handleFocus() {
+    if (hasValidQuery) {
+      setIsResultsOpen(true);
+    }
   }
 
   return (
-    <section className="rounded-2xl border border-black/10 bg-white p-4 shadow-sm dark:border-white/10 dark:bg-white/5">
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <p className="text-sm font-medium text-black/50 dark:text-white/50">
+    <section
+      ref={containerRef}
+      aria-labelledby={`${resultsRegionId}-label`}
+      className="rounded-2xl border border-black/10 bg-white p-4 shadow-sm dark:border-white/10 dark:bg-white/5"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p
+            id={`${resultsRegionId}-label`}
+            className="text-sm font-medium text-black/50 dark:text-white/50"
+          >
             {label}
           </p>
 
           {player ? (
             <div className="mt-1">
-              <h2 className="text-xl font-semibold">{player.name}</h2>
+              <h2 className="text-xl font-semibold break-words">
+                {player.name}
+              </h2>
 
               <p className="text-sm text-black/55 dark:text-white/55">
                 Profile #{player.profile_id.toLocaleString()}
@@ -52,8 +122,7 @@ export function ComparePlayerPicker({
             </div>
           ) : (
             <div className="mt-1 flex items-center gap-2 text-black/55 dark:text-white/55">
-              <UserRound className="size-5" aria-hidden="true" />
-
+              <UserRound className="size-5 shrink-0" aria-hidden="true" />
               <span>No player selected</span>
             </div>
           )}
@@ -62,9 +131,15 @@ export function ComparePlayerPicker({
         {player && (
           <button
             type="button"
-            onClick={onClear}
-            className="inline-flex size-9 items-center justify-center rounded-lg border border-black/10 transition hover:bg-black/5 dark:border-white/10 dark:hover:bg-white/10"
-            aria-label={`Remove ${player.name}`}
+            onClick={handleClear}
+            className={[
+              "inline-flex size-10 shrink-0 items-center justify-center rounded-lg border border-black/10 transition",
+              "hover:bg-black/5",
+              "focus-visible:ring-2 focus-visible:ring-black/40 focus-visible:ring-offset-2 focus-visible:outline-none",
+              "dark:border-white/10 dark:hover:bg-white/10",
+              "dark:focus-visible:ring-white/50 dark:focus-visible:ring-offset-black",
+            ].join(" ")}
+            aria-label={`Remove ${player.name} from ${label.toLowerCase()}`}
           >
             <X className="size-4" aria-hidden="true" />
           </button>
@@ -78,34 +153,52 @@ export function ComparePlayerPicker({
         />
 
         <input
+          ref={inputRef}
+          type="search"
           value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          placeholder="Search players"
+          maxLength={MAX_SEARCH_LENGTH}
+          onChange={(event) => handleQueryChange(event.target.value)}
+          onFocus={handleFocus}
+          placeholder={`Search for ${label.toLowerCase()}`}
           aria-label={`${label} search`}
-          className="w-full rounded-lg border border-black/10 bg-black/[0.02] py-2.5 pr-3 pl-10 text-sm transition outline-none focus:border-black/30 focus:ring-4 focus:ring-black/5 dark:border-white/10 dark:bg-white/5 dark:focus:border-white/30"
+          className={[
+            "w-full rounded-lg border border-black/10 bg-black/[0.02] py-2.5 pr-3 pl-10 text-sm transition outline-none",
+            "focus:border-black/30 focus:ring-4 focus:ring-black/5",
+            "dark:border-white/10 dark:bg-white/5 dark:focus:border-white/30 dark:focus:ring-white/5",
+          ].join(" ")}
         />
       </div>
 
-      {isLoading && (
-        <p className="mt-3 text-sm text-black/50 dark:text-white/50">
-          Searching…
+      {isResultsOpen && hasValidQuery && isSearching && (
+        <p
+          role="status"
+          aria-live="polite"
+          className="mt-3 text-sm text-black/50 dark:text-white/50"
+        >
+          Searching players…
         </p>
       )}
 
-      {error && (
-        <p role="alert" className="mt-3 text-sm text-red-600 dark:text-red-400">
-          Player search failed.
+      {isResultsOpen && hasValidQuery && !isSearching && error && (
+        <p
+          role="alert"
+          className="mt-3 rounded-lg border border-red-500/25 bg-red-500/5 p-3 text-sm text-red-700 dark:text-red-400"
+        >
+          Player search failed. Please try again.
         </p>
       )}
 
-      {query.trim().length >= 2 && !isLoading && results.length === 0 && (
+      {shouldShowResults && results.length === 0 && (
         <p className="mt-3 text-sm text-black/50 dark:text-white/50">
           No matching players found.
         </p>
       )}
 
-      {results.length > 0 && (
-        <div className="mt-3 max-h-80 overflow-y-auto rounded-lg border border-black/10 dark:border-white/10">
+      {shouldShowResults && results.length > 0 && (
+        <div
+          id={resultsRegionId}
+          className="mt-3 max-h-80 overflow-y-auto rounded-lg border border-black/10 dark:border-white/10"
+        >
           <div className="divide-y divide-black/10 dark:divide-white/10">
             {results.map((result) => {
               const matchmakingElo = result.leaderboards?.rm_1v1_elo?.rating;
@@ -115,18 +208,23 @@ export function ComparePlayerPicker({
                   key={result.profile_id}
                   type="button"
                   onClick={() => handleSelect(result)}
-                  className="flex w-full items-center justify-between gap-4 p-3 text-left transition hover:bg-black/5 dark:hover:bg-white/5"
+                  className={[
+                    "flex min-h-16 w-full items-center justify-between gap-4 p-3 text-left transition",
+                    "hover:bg-black/5",
+                    "focus-visible:ring-2 focus-visible:ring-black/40 focus-visible:outline-none focus-visible:ring-inset",
+                    "dark:hover:bg-white/5 dark:focus-visible:ring-white/50",
+                  ].join(" ")}
                 >
                   <div className="min-w-0">
                     <p className="truncate font-medium">{result.name}</p>
 
                     <p className="text-xs text-black/50 dark:text-white/50">
-                      Profile #{result.profile_id}
+                      Profile #{result.profile_id.toLocaleString()}
                     </p>
                   </div>
 
                   <div className="shrink-0 text-right">
-                    <p className="font-semibold">
+                    <p className="font-semibold tabular-nums">
                       {typeof matchmakingElo === "number"
                         ? matchmakingElo.toLocaleString()
                         : "—"}
